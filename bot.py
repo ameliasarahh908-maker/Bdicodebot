@@ -6,7 +6,9 @@ from aiogram.enums import ParseMode
 
 import asyncio
 
-TOKEN = "8939749298:AAFw6u-DoBbWsz2UGblbR2ayiZ3Ei8v18XA"
+import os
+
+TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(
     token=TOKEN,
