@@ -272,8 +272,7 @@ async def finish_upload(message: Message, state: FSMContext):
 
 # =========================
 # HANDLE CODE (NO DEEPLINK)
-# =========================
-@router.message(F.text)
+# =========================@router.message(F.text)
 async def handle_code(message: Message, state: FSMContext):
 
     # 🔥 penting: kalau lagi upload → skip
@@ -283,6 +282,18 @@ async def handle_code(message: Message, state: FSMContext):
     text = message.text.strip()
 
     if text.startswith("/"):
+        return
+
+    # IGNORE MENU BUTTON
+    menu_text = [
+        "📤 Up File",
+        "📥 Get File",
+        "📊 Account",
+        "📃 Help",
+        "💎 VIP / VVIP"
+    ]
+
+    if text in menu_text:
         return
 
     if len(text) < 6:
