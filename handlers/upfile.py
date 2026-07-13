@@ -596,7 +596,7 @@ async def finalize_save(message: Message, state: FSMContext):
         # GENERATE UNIQUE CODE
         # =========================
         while True:
-            code = "DecoderFileBot" + "".join(
+            code = "zyxfidxbot" + "".join(
                 random.choices(
                     string.ascii_uppercase + string.digits,
                     k=10
