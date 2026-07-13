@@ -64,7 +64,7 @@ async def receive_code(message: Message, state: FSMContext):
         return await message.answer("❌ *Invalid code input*")
 
     import re, time
-    from config import CHANNEL_DB
+    from config import CHANNEL_ID
 
     text = message.text.strip()
     code = None
@@ -215,7 +215,7 @@ async def receive_code(message: Message, state: FSMContext):
     try:
         await message.bot.copy_message(
             chat_id=message.chat.id,
-            from_chat_id=CHANNEL_DB,
+            from_chat_id=CHANNEL_ID,
             message_id=msg_id,
             caption=caption,
             reply_markup=keyboard,
