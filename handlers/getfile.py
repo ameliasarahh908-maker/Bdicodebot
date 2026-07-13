@@ -206,7 +206,7 @@ async def receive_code(message: Message, state: FSMContext):
     )
 
     caption = (
-        "*ZYXFIDXBOT*\n"r
+        "*ZYXFIDXBOT*\n"
         f"*🔑 CODE:* `{code}`\n"
         f"*📊 FILES:* {len(media)}\n"
         f"*📤 ACCESS:* {share_status}"
