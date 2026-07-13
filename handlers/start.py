@@ -278,7 +278,6 @@ async def finish_upload(message: Message, state: FSMContext):
 
 @router.message()
 async def handle_code(message: Message, state: FSMContext):
-
     import json
 
     try:
@@ -310,10 +309,7 @@ async def handle_code(message: Message, state: FSMContext):
         # =========================
         # DATA
         # =========================
-        is_paid = file["is_paid"]
-        price = file["price"] or 0
         share_media = file["share_media"] if file["share_media"] is not None else True
-
         protect = not share_media
         title = file["title"] or "Untitled"
 
@@ -332,46 +328,52 @@ async def handle_code(message: Message, state: FSMContext):
             return await message.answer("❌ File kosong / rusak")
 
         # =========================
-        # FILTER MEDIA
-        # =========================
-        valid_media = []
-        invalid_count = 0
-
-        for item in media:
-            mid = item.get("message_id")
-            if mid:
-                valid_media.append(mid)
-            else:
-                invalid_count += 1
-
-        logging.info(f"VALID: {valid_media}")
-        logging.info(f"INVALID COUNT: {invalid_count}")
-
-        # =========================
-        # KALAU TIDAK ADA VALID
-        # =========================
-        if not valid_media:
-            return await message.answer(
-                "❌ Semua file tidak valid\n\n"
-                "⚠️ Database kamu belum pakai message_id"
-            )
-
-        # =========================
-        # SEND MEDIA
+        # SEND MEDIA (FIX UTAMA)
         # =========================
         sent = 0
+        failed = 0
 
-        for mid in valid_media:
+        for item in media:
             try:
-                await message.bot.copy_message(
-                    chat_id=message.chat.id,
-                    from_chat_id=CHANNEL_ID,
-                    message_id=int(mid),
-                    protect_content=protect
-                )
+                # =========================
+                # PRIORITAS: message_id
+                # =========================
+                if item.get("message_id"):
+                    await message.bot.copy_message(
+                        chat_id=message.chat.id,
+                        from_chat_id=CHANNEL_ID,
+                        message_id=int(item["message_id"]),
+                        protect_content=protect
+                    )
+                    sent += 1
+                    continue
+
+                # =========================
+                # FALLBACK: file_id
+                # =========================
+                file_id = item.get("file_id")
+                if not file_id:
+                    failed += 1
+                    continue
+
+                t = item.get("type")
+
+                if t == "video":
+                    await message.answer_video(file_id, protect_content=protect)
+                elif t == "photo":
+                    await message.answer_photo(file_id, protect_content=protect)
+                elif t == "document":
+                    await message.answer_document(file_id, protect_content=protect)
+                elif t == "audio":
+                    await message.answer_audio(file_id, protect_content=protect)
+                else:
+                    await message.answer_document(file_id, protect_content=protect)
+
                 sent += 1
+
             except Exception as e:
-                logging.error(f"COPY ERROR {mid}: {e}")
+                logging.error(f"SEND ERROR: {item} | {e}")
+                failed += 1
 
         # =========================
         # HASIL
@@ -379,11 +381,11 @@ async def handle_code(message: Message, state: FSMContext):
         caption = (
             f"📂 {title}\n"
             f"🔑 {code}\n"
-            f"📦 terkirim: {sent}\n"
+            f"✅ terkirim: {sent}\n"
         )
 
-        if invalid_count:
-            caption += f"⚠️ rusak: {invalid_count}"
+        if failed:
+            caption += f"❌ gagal: {failed}"
 
         await message.answer(caption)
 
