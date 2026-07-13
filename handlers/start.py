@@ -388,9 +388,6 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     # SEND FILE
     # =========================
-    first = media[0]
-    fid = first["file_id"]
-    ftype = first.get("type", "document")
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -403,40 +400,66 @@ async def handle_code(message: Message, state: FSMContext):
         ]
     )
 
-    try:
-        if ftype == "photo":
-            await message.answer_photo(
-                fid,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=keyboard,
-                protect_content=protect
+    sent = 0
+
+    for item in media:
+
+        fid = item.get("file_id")
+        ftype = item.get("type", "document")
+
+        if not fid:
+            continue
+
+        try:
+
+            if ftype == "photo":
+
+                await message.answer_photo(
+                    photo=fid,
+                    caption=caption if sent == 0 else None,
+                    parse_mode="HTML" if sent == 0 else None,
+                    reply_markup=keyboard if sent == 0 else None,
+                    protect_content=protect
+                )
+
+            elif ftype == "video":
+
+                await message.answer_video(
+                    video=fid,
+                    caption=caption if sent == 0 else None,
+                    parse_mode="HTML" if sent == 0 else None,
+                    reply_markup=keyboard if sent == 0 else None,
+                    protect_content=protect
+                )
+
+            else:
+
+                await message.answer_document(
+                    document=fid,
+                    caption=caption if sent == 0 else None,
+                    parse_mode="HTML" if sent == 0 else None,
+                    reply_markup=keyboard if sent == 0 else None,
+                    protect_content=protect
+                )
+
+
+            sent += 1
+
+
+        except Exception as e:
+
+            logging.error(
+                f"SEND MEDIA ERROR | TYPE={ftype} | ID={fid} | {e}"
             )
 
-        elif ftype == "video":
-            await message.answer_video(
-                fid,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=keyboard,
-                protect_content=protect
-            )
+            continue
 
-        else:
-            await message.answer_document(
-                fid,
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=keyboard,
-                protect_content=protect
-            )
 
-    except Exception as e:
+    if sent == 0:
         await message.answer(
-            f"<b><i>❌ MEDIA ERROR</i></b>\n\n<code>{e}</code>",
+            "<b><i>❌ Semua media gagal dikirim</i></b>",
             parse_mode="HTML"
         )
-
 
 # =========================
 # PROCESS START
