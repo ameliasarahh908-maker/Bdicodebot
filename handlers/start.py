@@ -63,15 +63,24 @@ async def auto_upload(message: Message, state: FSMContext):
     item = None
 
     if message.photo:
-        item = {"file_id": message.photo[-1].file_id, "type": "photo"}
+        item = {
+            "file_id": message.photo[-1].file_id,
+            "type": "photo"
+        }
         data["photo"] += 1
 
     elif message.video:
-        item = {"file_id": message.video.file_id, "type": "video"}
+        item = {
+            "file_id": message.video.file_id,
+            "type": "video"
+        }
         data["video"] += 1
 
     elif message.document:
-        item = {"file_id": message.document.file_id, "type": "document"}
+        item = {
+            "file_id": message.document.file_id,
+            "type": "document"
+        }
         data["doc"] += 1
 
     if not item:
@@ -81,11 +90,26 @@ async def auto_upload(message: Message, state: FSMContext):
 
     await state.update_data(**data)
 
+    total = len(media)
+
     await message.answer(
-        "✅ Media ditambahkan\n\nKlik DONE kalau sudah selesai",
+        (
+            "<b><i>✅ MEDIA RECEIVED</i></b>\n\n"
+            f"<b><i>📦 Total Media : {total}</i></b>\n"
+            f"<b><i>🎥 Videos : {data['video']}</i></b>\n"
+            f"<b><i>🖼 Photos : {data['photo']}</i></b>\n"
+            f"<b><i>📄 Documents : {data['doc']}</i></b>\n\n"
+            "<b><i>Send more media or click DONE when finished.</i></b>"
+        ),
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="✅ DONE", callback_data="done_upload")]
+                [
+                    InlineKeyboardButton(
+                        text="✅ DONE",
+                        callback_data="done_upload"
+                    )
+                ]
             ]
         )
     )
@@ -496,7 +520,7 @@ async def render_home_fast(bot, message, user_id, username, balance):
 
     await message.edit_text(
         text,
-        parse_mode="HTML"
+        parse_mode="HTML",
         reply_markup=home_kb()
     )
 
