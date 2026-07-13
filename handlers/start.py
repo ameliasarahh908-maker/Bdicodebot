@@ -281,20 +281,11 @@ async def handle_code(message: Message, state: FSMContext):
 
     import json
 
-    # =========================
-    # AUTO READ CODE
-    # =========================
     text = (message.text or "").strip()
-
     if not text:
-        return await message.answer(
-            "<b><i>❌ Empty code</i></b>",
-            parse_mode="HTML"
-        )
+        return await message.answer("<b><i>❌ Empty code</i></b>", parse_mode="HTML")
 
-    # ambil kata pertama & bersihin
     code = text.split()[0].strip()
-
     logging.info(f"CHECK FILE CODE: {code}")
 
     # =========================
@@ -302,7 +293,7 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     file = await fetchrow(
         """
-        SELECT title, media, file_id, share_media, is_paid, price, owner_id
+        SELECT title, media, share_media, is_paid, price, owner_id
         FROM files
         WHERE code = $1
         LIMIT 1
@@ -312,13 +303,10 @@ async def handle_code(message: Message, state: FSMContext):
 
     if not file:
         await state.clear()
-        return await message.answer(
-            "<b><i>❌ File code not found</i></b>",
-            parse_mode="HTML"
-        )
+        return await message.answer("<b><i>❌ File code not found</i></b>", parse_mode="HTML")
 
     # =========================
-    # LOAD DATA
+    # DATA
     # =========================
     is_paid = file["is_paid"]
     price = file["price"] or 0
@@ -328,26 +316,16 @@ async def handle_code(message: Message, state: FSMContext):
     title = file["title"] or "Untitled"
 
     # =========================
-    # LOAD MEDIA
+    # MEDIA
     # =========================
     try:
         media = json.loads(file["media"]) if file["media"] else []
     except:
         media = []
 
-    # fallback database lama
-    if not media and file["file_id"]:
-        media = [{
-            "type": "document",
-            "file_id": file["file_id"]
-        }]
-
     if not media:
         await state.clear()
-        return await message.answer(
-            "<b><i>❌ File is empty</i></b>",
-            parse_mode="HTML"
-        )
+        return await message.answer("<b><i>❌ File is empty</i></b>", parse_mode="HTML")
 
     # =========================
     # ACCESS CHECK
@@ -377,11 +355,7 @@ async def handle_code(message: Message, state: FSMContext):
 
     owner = user_id == file["owner_id"]
 
-    # =========================
-    # LOCK CHECK
-    # =========================
     if is_paid and not vip and not owner and not purchased:
-
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[
                 InlineKeyboardButton(
@@ -399,7 +373,7 @@ async def handle_code(message: Message, state: FSMContext):
         )
 
     # =========================
-    # CAPTION
+    # CAPTION + BUTTON
     # =========================
     caption = (
         "<b><i>📂 EARNFILEBOX</i></b>\n\n"
@@ -418,67 +392,40 @@ async def handle_code(message: Message, state: FSMContext):
     )
 
     # =========================
-    # SEND MEDIA
+    # SEND MEDIA (COPY ONLY)
     # =========================
     sent = 0
 
     for item in media:
-
-        fid = item.get("file_id")
         message_id = item.get("message_id")
-        ftype = (item.get("type") or "document").lower()
 
-        # PRIORITAS: COPY MESSAGE (lebih stabil)
-        if message_id:
-            try:
-                await message.bot.copy_message(
-                    chat_id=message.chat.id,
-                    from_chat_id=CHANNEL_ID,
-                    message_id=int(message_id),
-                    protect_content=protect
-                )
-                sent += 1
-                continue
-            except Exception as e:
-                logging.error(f"COPY ERROR {message_id}: {e}")
-
-        if not fid:
+        if not message_id:
+            logging.error("SKIP: NO MESSAGE_ID")
             continue
 
         try:
-            if ftype == "video":
-                await message.answer_video(
-                    video=fid,
-                    caption=caption if sent == 0 else None,
-                    parse_mode="HTML" if sent == 0 else None,
-                    reply_markup=keyboard if sent == 0 else None,
-                    protect_content=protect
-                )
-
-            elif ftype == "photo":
-                await message.answer_photo(
-                    photo=fid,
-                    caption=caption if sent == 0 else None,
-                    parse_mode="HTML" if sent == 0 else None,
-                    reply_markup=keyboard if sent == 0 else None,
-                    protect_content=protect
-                )
-
-            else:
-                await message.answer_document(
-                    document=fid,
-                    caption=caption if sent == 0 else None,
-                    parse_mode="HTML" if sent == 0 else None,
-                    reply_markup=keyboard if sent == 0 else None,
-                    protect_content=protect
-                )
+            await message.bot.copy_message(
+                chat_id=message.chat.id,
+                from_chat_id=CHANNEL_ID,
+                message_id=int(message_id),
+                protect_content=protect
+            )
 
             sent += 1
 
         except Exception as e:
-            logging.error(f"FILE ERROR {fid}: {e}")
+            logging.error(f"COPY ERROR {message_id}: {e}")
 
-    if sent == 0:
+    # =========================
+    # HEADER (CAPTION DI AKHIR)
+    # =========================
+    if sent > 0:
+        await message.answer(
+            caption,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    else:
         await message.answer(
             "<b><i>❌ Failed to send all media</i></b>",
             parse_mode="HTML"
