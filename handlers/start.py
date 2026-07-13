@@ -343,7 +343,7 @@ async def set_language(call: CallbackQuery):
 
     await call.message.answer(
         translate(lang, "menu"),
-        reply_markup=home_kb(),
+        reply_markup=home_kb(call.from_user.id),
         parse_mode="Markdown"
     )
 
@@ -410,7 +410,7 @@ async def render_home_fast(
         await message.edit_text(
             text,
             parse_mode="HTML",
-            reply_markup=home_kb()
+            reply_markup=home_kb(user_id)
         )
 
     except Exception:
@@ -419,7 +419,7 @@ async def render_home_fast(
             user_id,
             text,
             parse_mode="HTML",
-            reply_markup=home_kb()
+            reply_markup=home_kb(user_id)
         )
 
 # =========================
