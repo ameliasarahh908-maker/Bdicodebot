@@ -10,6 +10,8 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InputMediaDocument
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from keyboards.language import language_kb
+from utils.language import translate
 from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
@@ -62,7 +64,7 @@ async def start_cmd(message: Message, state: FSMContext):
 
             is_paid = file["is_paid"]
             price = file["price"] or 0
-            share_media = file.get("share_media", True)
+            share_media = file["share_media"] if file["share_media"] is not None else True
             protect = not share_media
 
             # =========================
@@ -228,11 +230,19 @@ async def process_start(message, loading, user_id, username):
 
     if not sub:
         return await loading.edit_text(
-            "❌ JOIN REQUIRED\n\nSilakan join semua channel",
-            reply_markup=join_kb()
+            "❌ *JOIN REQUIRED*\n\n"
+            "_Please join all required channels first._",
+            reply_markup=join_kb(),
+            parse_mode="Markdown"
         )
 
+
     pool = await get_pool()
+
+
+    # =========================
+    # CREATE / UPDATE USER
+    # =========================
 
     await pool.execute(
         """
@@ -241,10 +251,12 @@ async def process_start(message, loading, user_id, username):
             telegram_id,
             username,
             chat_id,
-            balance
+            balance,
+            language
         )
         VALUES
-        ($1,$2,$3,0)
+        ($1,$2,$3,0,NULL)
+
         ON CONFLICT (telegram_id)
         DO UPDATE SET
             username = EXCLUDED.username,
@@ -255,14 +267,44 @@ async def process_start(message, loading, user_id, username):
         message.chat.id
     )
 
+
+    # =========================
+    # GET USER DATA
+    # =========================
+
     user = await pool.fetchrow(
         """
-        SELECT username, balance
+        SELECT 
+            username,
+            balance,
+            language
         FROM users
         WHERE telegram_id=$1
         """,
         user_id
     )
+
+
+    # =========================
+    # FIRST TIME LANGUAGE
+    # =========================
+
+    if not user["language"]:
+
+        await loading.edit_text(
+            "*𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓*\n\n"
+            "🌐 *SELECT LANGUAGE*\n\n"
+            "_Choose your preferred language._",
+            reply_markup=language_kb,
+            parse_mode="Markdown"
+        )
+
+        return
+
+
+    # =========================
+    # OPEN HOME
+    # =========================
 
     await render_home_fast(
         bot,
@@ -271,6 +313,61 @@ async def process_start(message, loading, user_id, username):
         user["username"] or "unknown",
         user["balance"] or 0
     )
+# =========================
+# SET LANGUAGE
+# =========================
+
+@router.callback_query(F.data.startswith("setlang:"))
+async def set_language(call: CallbackQuery):
+
+    lang = call.data.split(":")[1]
+
+    pool = await get_pool()
+
+
+    # =========================
+    # SAVE LANGUAGE
+    # =========================
+
+    await pool.execute(
+        """
+        UPDATE users
+        SET language=$1
+        WHERE telegram_id=$2
+        """,
+        lang,
+        call.from_user.id
+    )
+
+
+    # =========================
+    # WELCOME MESSAGE
+    # =========================
+
+    await call.message.edit_text(
+        translate(
+            lang,
+            "welcome"
+        ),
+        parse_mode="Markdown"
+    )
+
+
+    # =========================
+    # SHOW HOME MENU
+    # =========================
+
+    await call.message.answer(
+        translate(
+            lang,
+            "menu"
+        ),
+        reply_markup=home_kb(),
+        parse_mode="Markdown"
+    )
+
+
+    await call.answer()
     
 # =========================
 # HOME UI
@@ -283,18 +380,49 @@ async def render_home_fast(
     balance
 ):
 
-    text = (
-        "<b>📂 DECODER FILE BOT</b>\n\n"
-        "Selamat datang di Decoder File Bot.\n\n"
+    pool = await get_pool()
 
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 ID : <code>{user_id}</code>\n"
-        f"👤 Username : @{username}\n"
-        f"💰 Saldo : <b>Rp {balance:,}</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+    lang = await pool.fetchval(
+        """
+        SELECT language
+        FROM users
+        WHERE telegram_id=$1
+        """,
+        user_id
+    )
 
-        "Silakan pilih menu di bawah."
-    ).replace(",", ".")
+    lang = lang or "en"
+
+
+    if lang == "id":
+
+        text = (
+            "<b>𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓</b>\n\n"
+            "Selamat datang di bot penyimpanan file.\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 ID : <code>{user_id}</code>\n"
+            f"👤 Username : @{username}\n"
+            f"💰 Saldo : <b>Rp {balance:,}</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "Silakan pilih menu di bawah."
+        )
+
+    else:
+
+        text = (
+            "<b>𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓</b>\n\n"
+            "Welcome to our file storage bot.\n\n"
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 ID : <code>{user_id}</code>\n"
+            f"👤 Username : @{username}\n"
+            f"💰 Balance : <b>Rp {balance:,}</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "Please choose a menu below."
+        )
+
+
+    text = text.replace(",", ".")
+
 
     try:
         await message.edit_text(
@@ -304,13 +432,13 @@ async def render_home_fast(
         )
 
     except Exception:
+
         await bot.send_message(
             user_id,
             text,
             parse_mode="HTML",
             reply_markup=home_kb()
         )
-
 
 # =========================
 # CALLBACK HOME
