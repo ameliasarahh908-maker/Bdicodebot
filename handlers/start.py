@@ -11,7 +11,7 @@ from states.upload import UploadState
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from utils.force_sub import check_force_sub
-from keyboards.menu import home_kb
+from config import CHANNEL_DB
 from keyboards.join import join_kb
 from database import execute, fetchrow, fetchval
 
@@ -478,20 +478,40 @@ async def handle_code(message: Message, state: FSMContext):
     for item in media:
 
         fid = item.get("file_id") or item.get("file")
+        message_id = item.get("message_id")
+        ftype = item.get("type") or "document"
+
+
+        if message_id:
+
+            try:
+                await message.bot.copy_message(
+                    chat_id=message.chat.id,
+                    from_chat_id=CHANNEL_DB,
+                    message_id=int(message_id),
+                    protect_content=protect
+                )
+
+                sent += 1
+                continue
+
+            except Exception as e:
+                logging.error(
+                    f"COPY MEDIA ERROR | {message_id} | {e}"
+                )
+                continue
+
 
         if not fid:
             continue
 
 
-        ftype = item.get("type") or "document"
-
-
         try:
 
-            if ftype == "photo":
+            if ftype == "video":
 
-                await message.answer_photo(
-                    photo=fid,
+                await message.answer_video(
+                    video=fid,
                     caption=caption if sent == 0 else None,
                     parse_mode="HTML" if sent == 0 else None,
                     reply_markup=keyboard if sent == 0 else None,
@@ -499,10 +519,10 @@ async def handle_code(message: Message, state: FSMContext):
                 )
 
 
-            elif ftype == "video":
+            elif ftype == "photo":
 
-                await message.answer_video(
-                    video=fid,
+                await message.answer_photo(
+                    photo=fid,
                     caption=caption if sent == 0 else None,
                     parse_mode="HTML" if sent == 0 else None,
                     reply_markup=keyboard if sent == 0 else None,
@@ -524,13 +544,15 @@ async def handle_code(message: Message, state: FSMContext):
             sent += 1
 
 
-        except Exception as e:
+        except TelegramBadRequest as e:
+
             logging.error(
-                f"SEND MEDIA ERROR {ftype} {fid}: {e}"
+                f"INVALID FILE_ID {fid}: {e}"
             )
 
 
     if sent == 0:
+
         await message.answer(
             "<b><i>❌ Semua media gagal dikirim</i></b>",
             parse_mode="HTML"
