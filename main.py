@@ -25,6 +25,7 @@ os.environ["TZ"] = TIMEZONE
 if hasattr(time, "tzset"):
     time.tzset()
 
+
 # =========================
 # LOGGING
 # =========================
@@ -33,10 +34,24 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
+
 # =========================
 # GLOBAL TASKS
 # =========================
 tasks = {}
+
+
+# =========================
+# TASK WRAPPER (ANTI CRASH)
+# =========================
+async def task_wrapper(name, coro):
+    try:
+        logging.info(f"▶️ {name} started")
+        await coro
+    except asyncio.CancelledError:
+        logging.info(f"⛔ {name} cancelled")
+    except Exception:
+        logging.exception(f"💥 {name} crashed")
 
 
 # =========================
@@ -47,9 +62,8 @@ def create_task(name, coro):
         logging.warning(f"⚠️ {name} already running")
         return
 
-    task = asyncio.create_task(coro)
+    task = asyncio.create_task(task_wrapper(name, coro))
     tasks[name] = task
-    logging.info(f"✅ {name} started")
 
 
 # =========================
@@ -57,12 +71,20 @@ def create_task(name, coro):
 # =========================
 async def stop_task(name):
     task = tasks.get(name)
-    if task:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            logging.info(f"❌ {name} stopped")
+
+    if not task:
+        return
+
+    task.cancel()
+
+    try:
+        await asyncio.wait_for(task, timeout=5)
+    except asyncio.TimeoutError:
+        logging.warning(f"⚠️ {name} force killed")
+    except asyncio.CancelledError:
+        pass
+
+    logging.info(f"❌ {name} stopped")
 
 
 # =========================
@@ -72,7 +94,7 @@ async def start_workers():
     create_task("AUTO_DELETE", auto_delete_worker())
     create_task("PAYMENT", payment_worker())
 
-    # ✅ polling bot (SATU-SATUNYA)
+    # ✅ polling bot (WAJIB cuma 1)
     create_task(
         "POLLING",
         dp.start_polling(
@@ -89,16 +111,25 @@ async def start_workers():
 async def lifespan(app: FastAPI):
     logging.info("🚀 APP STARTING...")
 
-    # init DB
+    # =========================
+    # INIT DB
+    # =========================
     await get_pool()
 
-    # reset webhook
-    await bot.delete_webhook(drop_pending_updates=True)
+    # =========================
+    # RESET TELEGRAM
+    # =========================
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception:
+        logging.warning("⚠️ Failed delete webhook")
 
     me = await bot.get_me()
     logging.info(f"🤖 Logged in as @{me.username}")
 
-    # start all workers
+    # =========================
+    # START WORKERS
+    # =========================
     await start_workers()
 
     yield
@@ -108,10 +139,14 @@ async def lifespan(app: FastAPI):
     # =========================
     logging.info("🛑 SHUTDOWN...")
 
+    # stop all tasks
     for name in list(tasks.keys()):
         await stop_task(name)
 
+    # close DB
     await close_db()
+
+    # close bot session
     await bot.session.close()
 
     logging.info("✅ APP STOPPED")
