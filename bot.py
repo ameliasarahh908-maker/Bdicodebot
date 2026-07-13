@@ -1,7 +1,7 @@
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 from utils.redis_client import redis_client
@@ -17,13 +17,15 @@ bot = Bot(
 
 
 # =========================
-# FSM STORAGE REDIS
+# FSM STORAGE (REDIS / FALLBACK)
 # =========================
-storage = RedisStorage(redis)
+if redis_client:
+    storage = RedisStorage(redis_client)
+else:
+    storage = MemoryStorage()
 
-dp = Dispatcher(
-    storage=storage
-)
+
+dp = Dispatcher(storage=storage)
 
 
 # =========================
