@@ -285,7 +285,7 @@ async def handle_code(message: Message, state: FSMContext):
         if not text:
             return await message.answer("❌ Empty code")
 
-        code = text.split()[0].strip()
+        code = text.split()[0]
         logging.info(f"CHECK FILE CODE: {code}")
 
         # =========================
@@ -293,7 +293,7 @@ async def handle_code(message: Message, state: FSMContext):
         # =========================
         file = await fetchrow(
             """
-            SELECT title, media, share_media, is_paid, price, owner_id
+            SELECT title, media, share_media
             FROM files
             WHERE code = $1
             LIMIT 1
@@ -304,11 +304,6 @@ async def handle_code(message: Message, state: FSMContext):
         if not file:
             return await message.answer("❌ File code not found")
 
-        logging.info(f"DB RESULT: {file}")
-
-        # =========================
-        # DATA
-        # =========================
         share_media = file["share_media"] if file["share_media"] is not None else True
         protect = not share_media
         title = file["title"] or "Untitled"
@@ -320,72 +315,106 @@ async def handle_code(message: Message, state: FSMContext):
             media = json.loads(file["media"]) if file["media"] else []
         except Exception as e:
             logging.error(f"JSON ERROR: {e}")
-            media = []
-
-        logging.info(f"MEDIA PARSED: {media}")
+            return await message.answer("❌ Data media rusak")
 
         if not media:
-            return await message.answer("❌ File kosong / rusak")
+            return await message.answer("❌ File kosong")
 
-        # =========================
-        # SEND MEDIA (FIX UTAMA)
-        # =========================
         sent = 0
         failed = 0
 
+        # =========================
+        # LOOP MEDIA
+        # =========================
         for item in media:
             try:
                 # =========================
-                # PRIORITAS: message_id
+                # 1. PRIORITAS message_id
                 # =========================
-                if item.get("message_id"):
-                    await message.bot.copy_message(
-                        chat_id=message.chat.id,
-                        from_chat_id=CHANNEL_ID,
-                        message_id=int(item["message_id"]),
-                        protect_content=protect
-                    )
-                    sent += 1
-                    continue
+                msg_id = item.get("message_id")
+
+                if msg_id:
+                    try:
+                        await message.bot.copy_message(
+                            chat_id=message.chat.id,
+                            from_chat_id=CHANNEL_ID,
+                            message_id=int(msg_id),
+                            protect_content=protect
+                        )
+                        sent += 1
+                        continue
+                    except Exception as e:
+                        logging.warning(f"COPY FAILED → fallback file_id | {e}")
 
                 # =========================
-                # FALLBACK: file_id
+                # 2. FALLBACK file_id
                 # =========================
                 file_id = item.get("file_id")
                 if not file_id:
                     failed += 1
                     continue
 
-                t = item.get("type")
+                t = (item.get("type") or "").lower()
 
-                if t == "video":
-                    await message.answer_video(file_id, protect_content=protect)
-                elif t == "photo":
-                    await message.answer_photo(file_id, protect_content=protect)
-                elif t == "document":
-                    await message.answer_document(file_id, protect_content=protect)
-                elif t == "audio":
-                    await message.answer_audio(file_id, protect_content=protect)
-                else:
-                    await message.answer_document(file_id, protect_content=protect)
+                try:
+                    if t == "video":
+                        msg = await message.answer_video(file_id, protect_content=protect)
+                    elif t == "photo":
+                        msg = await message.answer_photo(file_id, protect_content=protect)
+                    elif t == "audio":
+                        msg = await message.answer_audio(file_id, protect_content=protect)
+                    else:
+                        msg = await message.answer_document(file_id, protect_content=protect)
 
-                sent += 1
+                    sent += 1
+
+                    # =========================
+                    # 🔥 AUTO MIGRASI (IMPORTANT)
+                    # =========================
+                    try:
+                        new_msg = await message.bot.send_copy(
+                            chat_id=CHANNEL_ID,
+                            from_chat_id=message.chat.id,
+                            message_id=msg.message_id
+                        )
+
+                        # update DB langsung
+                        item["message_id"] = new_msg.message_id
+
+                    except Exception as e:
+                        logging.warning(f"MIGRATION FAILED: {e}")
+
+                except Exception as e:
+                    logging.error(f"FILE_ID FAILED: {file_id} | {e}")
+                    failed += 1
 
             except Exception as e:
-                logging.error(f"SEND ERROR: {item} | {e}")
+                logging.error(f"ITEM ERROR: {item} | {e}")
                 failed += 1
 
         # =========================
-        # HASIL
+        # OPTIONAL: SAVE MIGRATION
+        # =========================
+        try:
+            await execute(
+                "UPDATE files SET media=$1 WHERE code=$2",
+                json.dumps(media),
+                code
+            )
+        except Exception as e:
+            logging.warning(f"DB UPDATE FAILED: {e}")
+
+        # =========================
+        # RESULT
         # =========================
         caption = (
             f"📂 {title}\n"
             f"🔑 {code}\n"
-            f"✅ terkirim: {sent}\n"
+            f"✅ terkirim: {sent}"
         )
 
         if failed:
-            caption += f"❌ gagal: {failed}"
+            caption += f"\n❌ gagal: {failed}"
 
         await message.answer(caption)
 
