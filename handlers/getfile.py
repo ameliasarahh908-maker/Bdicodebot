@@ -47,13 +47,12 @@ async def getfile_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(GetFileState.wait_code)
 
     await call.message.edit_text(
-        "*𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓*\n\n"
-        "🔑 *𝐒𝐄𝐍𝐃 𝐘𝐎𝐔𝐑 𝐅𝐈𝐋𝐄 𝐂𝐎𝐃𝐄*\n\n"
-        "_Please enter the code to access your file._",
-        parse_mode="Markdown"
+        "𝗘𝗔𝗥𝗡𝗙𝗜𝗟𝗘𝗕𝗢𝗫\n\n🔑 KIRIM KODE FILE"
     )
 
     await call.answer()
+
+
 # =========================
 # RECEIVE CODE
 # =========================
@@ -61,10 +60,9 @@ async def getfile_start(call: CallbackQuery, state: FSMContext):
 async def receive_code(message: Message, state: FSMContext):
 
     if not message.text:
-        return await message.answer("❌ *Invalid code input*")
+        return await message.answer("❌ Kode kosong")
 
-    import re, time
-    from config import CHANNEL_ID
+    import re
 
     text = message.text.strip()
     code = None
@@ -79,6 +77,11 @@ async def receive_code(message: Message, state: FSMContext):
             code = m.group(1)
 
     if not code:
+        m = re.search(r"(DecoderFileBot[A-Za-z0-9_-]+)", text)
+        if m:
+            code = m.group(1)
+
+    if not code:
         code = text
 
     pool = await get_pool()
@@ -88,48 +91,58 @@ async def receive_code(message: Message, state: FSMContext):
         code
     )
 
+    # =========================
+    # FILE NOT FOUND
+    # =========================
     if not file:
-        await message.answer("❌ *Code not found*")
+        await message.answer("❌ CODE TIDAK DITEMUKAN")
         await state.clear()
         return
 
     # =========================
-    # EXPIRE CHECK
+    # EXPIRED CHECK
     # =========================
+    import time
+
     expires_at = file["expires_at"]
 
     if expires_at and expires_at < int(time.time()):
-        await message.answer("❌ *File has expired*")
+        await message.answer("❌ File sudah kadaluarsa.")
         await state.clear()
         return
 
     # =========================
-    # VIEW COUNT
+    # VIEW COUNTER
     # =========================
     await pool.execute(
-        "UPDATE files SET view_count = view_count + 1 WHERE code=$1",
+        """
+        UPDATE files
+        SET view_count = view_count + 1
+        WHERE code=$1
+        """,
         code
     )
 
     media = safe_json(file["media"])
 
     if not media:
-        await message.answer("❌ *File is empty*")
+        await message.answer("❌ FILE KOSONG")
         await state.clear()
         return
 
     # =========================
-    # ACCESS CHECK
+    # FILE PAID CHECK
     # =========================
     is_paid = file["is_paid"] or False
     price = file["price"] or 0
 
     vip = await pool.fetchval(
         """
-        SELECT 1 FROM users
+        SELECT 1
+        FROM users
         WHERE telegram_id=$1
-        AND vip=TRUE
-        AND vip_until > NOW()
+          AND vip=TRUE
+          AND vip_until > NOW()
         """,
         message.from_user.id
     )
@@ -138,10 +151,11 @@ async def receive_code(message: Message, state: FSMContext):
 
     access = await pool.fetchval(
         """
-        SELECT 1 FROM file_purchases
+        SELECT 1
+        FROM file_purchases
         WHERE user_id=$1
-        AND file_code=$2
-        AND status='paid'
+          AND file_code=$2
+          AND status='paid'
         """,
         message.from_user.id,
         code
@@ -150,7 +164,7 @@ async def receive_code(message: Message, state: FSMContext):
     has_access = bool(vip or owner or access)
 
     # =========================
-    # LOCKED FILE
+    # BLOCK PAID FILE
     # =========================
     if is_paid and not has_access:
 
@@ -158,37 +172,38 @@ async def receive_code(message: Message, state: FSMContext):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"💳 PAY Rp {price:,}".replace(",", "."),
+                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
                         callback_data=f"pay:{code}"
                     )
                 ]
             ]
         )
 
-        text_msg = (
-            "*🔒 PAID FILE*\n\n"
+        text = (
+            "🔒 FILE BERBAYAR\n\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
-            f"*🔑 CODE:* `{code}`\n\n"
-            f"*💰 PRICE:* Rp {price:,}\n\n"
+            f"🔑 CODE  : {code}\n\n"
+            f"💰 HARGA : Rp {price:,}\n\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
-            "_Please complete payment to unlock this file._"
+            "⚠️ Silakan lakukan pembayaran untuk membuka file."
         ).replace(",", ".")
 
-        await message.answer(text_msg, reply_markup=keyboard, parse_mode="Markdown")
+        await message.answer(text, reply_markup=keyboard)
         await state.clear()
         return
 
     # =========================
-    # GET FIRST MEDIA (USE MESSAGE_ID)
+    # FREE / VIP / OWNER ACCESS
     # =========================
-    first = next((m for m in media if m.get("message_id")), None)
+    first = get_first_media(media)
 
-    if not first:
-        await message.answer("❌ *Invalid file data (no message_id)*")
+    if not first or not first.get("file_id"):
+        await message.answer("❌ FILE INVALID")
         await state.clear()
         return
 
-    msg_id = first["message_id"]
+    fid = first["file_id"]
+    ftype = (first.get("type") or "document").lower()
 
     share_media = file["share_media"] if file["share_media"] is not None else True
     share_status = "PUBLIC" if share_media else "PRIVATE"
@@ -206,24 +221,23 @@ async def receive_code(message: Message, state: FSMContext):
     )
 
     caption = (
-        "*ZYXFIDXBOT*\n"
-        f"*🔑 CODE:* `{code}`\n"
-        f"*📊 FILES:* {len(media)}\n"
-        f"*📤 ACCESS:* {share_status}"
+        "ZyxFidxBot\n"
+        f"🔑 CODE: {code}\n"
+        f"📊 FILE: {len(media)}\n"
+        f"📤 SHARE: {share_status}"
     )
 
     try:
-        await message.bot.copy_message(
-            chat_id=message.chat.id,
-            from_chat_id=CHANNEL_ID,
-            message_id=msg_id,
-            caption=caption,
-            reply_markup=keyboard,
-            protect_content=protect,
-            parse_mode="Markdown"
-        )
+        if ftype == "photo":
+            await message.answer_photo(fid, caption=caption, reply_markup=keyboard, protect_content=protect)
+
+        elif ftype == "video":
+            await message.answer_video(fid, caption=caption, reply_markup=keyboard, protect_content=protect)
+
+        else:
+            await message.answer_document(fid, caption=caption, reply_markup=keyboard, protect_content=protect)
 
     except Exception as e:
-        await message.answer(f"❌ *MEDIA ERROR:*\n`{e}`", parse_mode="Markdown")
+        await message.answer(f"❌ MEDIA ERROR:\n{e}")
 
     await state.clear()
