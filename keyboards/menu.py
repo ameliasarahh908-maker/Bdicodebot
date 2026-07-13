@@ -12,7 +12,7 @@ def home_kb():
             ],
 
             [
-                KeyboardButton(text="💰 Search Harga"),
+                KeyboardButton(text="💰 Search Price"),
                 KeyboardButton(text="💎 VIP / VVIP")
             ]
 
