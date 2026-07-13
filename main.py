@@ -91,8 +91,16 @@ async def stop_task(name):
 # START WORKERS
 # =========================
 async def start_workers():
-    create_task("AUTO_DELETE", auto_delete_worker())
-    create_task("PAYMENT", payment_worker())
+
+    create_task(
+        "AUTO_DELETE",
+        auto_delete_worker(bot)
+    )
+
+    create_task(
+        "PAYMENT",
+        payment_worker()
+    )
 
     # ✅ polling bot (WAJIB cuma 1)
     create_task(
@@ -102,8 +110,6 @@ async def start_workers():
             allowed_updates=dp.resolve_used_update_types(),
         )
     )
-
-
 # =========================
 # FASTAPI LIFESPAN
 # =========================
