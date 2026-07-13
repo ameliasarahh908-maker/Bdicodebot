@@ -276,7 +276,7 @@ async def finish_upload(message: Message, state: FSMContext):
 # HANDLE CODE (NO DEEPLINK)
 # =========================
 
-@router.message(GetFileState.wait_code)
+@router.message()
 async def handle_code(message: Message, state: FSMContext):
 
     import json
