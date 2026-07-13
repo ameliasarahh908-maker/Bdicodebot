@@ -29,7 +29,7 @@ BAYARGG_WEBHOOK_SECRET = os.getenv("BAYARGG_WEBHOOK_SECRET")
 # =========================
 # CHANNEL & GROUP
 # =========================
-CHANNEL_ID = -1004419102427
+CHANNEL_ID = -1004395938795
 GROUP_ID = -1004437365690
 
 # =========================
