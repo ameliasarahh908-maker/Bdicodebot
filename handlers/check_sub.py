@@ -21,16 +21,16 @@ async def check_sub_callback(call: CallbackQuery):
 
     try:
         ok = await check_force_sub(call.bot, user_id)
-        logging.info(f"FORCE SUB RESULT: {ok}")
 
         if not ok:
             await call.answer(
-                "❌ Kamu belum join semua channel.",
+                "❌ You haven't joined all channels.",
                 show_alert=True
             )
 
             await call.message.edit_text(
-                "❌ Kamu belum join semua channel.\n\nSilakan join dulu lalu klik CHECK lagi.",
+                "❌ You haven't joined all channels.\n\n"
+                "Please join first, then click CHECK again.",
                 reply_markup=join_kb()
             )
             return
@@ -38,12 +38,12 @@ async def check_sub_callback(call: CallbackQuery):
         pool = await get_pool()
 
         # =========================
-        # AUTO CREATE USER (SAFE FIX)
+        # AUTO CREATE USER
         # =========================
         await pool.execute(
             """
-            INSERT INTO users (telegram_id, username, balance)
-            VALUES ($1, $2, 0)
+            INSERT INTO users (telegram_id, username)
+            VALUES ($1, $2)
             ON CONFLICT (telegram_id) DO NOTHING
             """,
             user_id,
@@ -55,7 +55,7 @@ async def check_sub_callback(call: CallbackQuery):
         # =========================
         user = await pool.fetchrow(
             """
-            SELECT username, balance
+            SELECT username, vip, vip_until
             FROM users
             WHERE telegram_id=$1
             """,
@@ -63,28 +63,31 @@ async def check_sub_callback(call: CallbackQuery):
         )
 
         # =========================
-        # SAFE FALLBACK (ANTI CRASH)
+        # FALLBACK
         # =========================
         if not user:
-            logging.warning(f"USER STILL NULL: {user_id}")
+            logging.warning(f"USER NULL: {user_id}")
 
             await render_home_fast(
                 call.bot,
                 call.message,
                 user_id,
                 username,
-                0
+                False  # vip
             )
             return
 
-        await call.answer("✅ Verifikasi berhasil")
+        await call.answer("✅ Verification successful")
 
+        # =========================
+        # HOME RENDER
+        # =========================
         await render_home_fast(
             call.bot,
             call.message,
             user_id,
             user["username"] or username,
-            user["balance"] or 0
+            user["vip"]  # kirim status vip
         )
 
     except Exception as e:
