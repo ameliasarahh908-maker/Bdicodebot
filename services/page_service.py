@@ -11,6 +11,7 @@ from aiogram.types import (
 )
 
 from database import get_pool
+from utils.keyboard import build_page_buttons
 from services.access_service import check_access
 from utils.keyboard import build_page_buttons
 from utils.cache import NAV_CACHE
