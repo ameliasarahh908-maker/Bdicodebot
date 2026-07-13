@@ -293,7 +293,7 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     file = await fetchrow(
         """
-        SELECT title, media, file_id, share_media, is_paid, price, owner_id
+        SELECT title, media, share_media, is_paid, price, owner_id
         FROM files
         WHERE code = $1
         LIMIT 1
@@ -316,19 +316,12 @@ async def handle_code(message: Message, state: FSMContext):
     title = file["title"] or "Untitled"
 
     # =========================
-    # MEDIA LOAD
+    # LOAD MEDIA
     # =========================
     try:
         media = json.loads(file["media"]) if file["media"] else []
     except:
         media = []
-
-    # fallback legacy (1 file lama)
-    if not media and file["file_id"]:
-        media = [{
-            "type": "document",
-            "file_id": file["file_id"]
-        }]
 
     if not media:
         await state.clear()
@@ -380,14 +373,54 @@ async def handle_code(message: Message, state: FSMContext):
         )
 
     # =========================
-    # CAPTION
+    # FILTER MEDIA VALID
+    # =========================
+    valid_media = []
+    invalid_count = 0
+
+    for item in media:
+        mid = item.get("message_id")
+        if mid:
+            valid_media.append(mid)
+        else:
+            invalid_count += 1
+
+    if not valid_media:
+        await state.clear()
+        return await message.answer(
+            "<b><i>❌ All media invalid (no message_id)</i></b>",
+            parse_mode="HTML"
+        )
+
+    # =========================
+    # SEND MEDIA
+    # =========================
+    sent = 0
+
+    for mid in valid_media:
+        try:
+            await message.bot.copy_message(
+                chat_id=message.chat.id,
+                from_chat_id=CHANNEL_ID,
+                message_id=int(mid),
+                protect_content=protect
+            )
+            sent += 1
+        except Exception as e:
+            logging.error(f"COPY ERROR {mid}: {e}")
+
+    # =========================
+    # CAPTION + INFO
     # =========================
     caption = (
         "<b><i>📂 EARNFILEBOX</i></b>\n\n"
         f"<b><i>📌 Title :</i></b> {title}\n"
         f"<b><i>🔑 Code :</i></b> <code>{code}</code>\n"
-        f"<b><i>📦 Files :</i></b> {len(media)}"
+        f"<b><i>📦 Files :</i></b> {sent}\n"
     )
+
+    if invalid_count > 0:
+        caption += f"\n⚠️ {invalid_count} file rusak (tidak bisa dikirim)"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[
@@ -398,65 +431,11 @@ async def handle_code(message: Message, state: FSMContext):
         ]]
     )
 
-    # =========================
-    # SEND MEDIA
-    # =========================
-    sent = 0
-
-    for item in media:
-        message_id = item.get("message_id")
-        fid = item.get("file_id")
-        ftype = (item.get("type") or "document").lower()
-
-        # =========================
-        # PRIORITY 1: COPY MESSAGE
-        # =========================
-        if message_id:
-            try:
-                await message.bot.copy_message(
-                    chat_id=message.chat.id,
-                    from_chat_id=CHANNEL_ID,
-                    message_id=int(message_id),
-                    protect_content=protect
-                )
-                sent += 1
-                continue
-            except Exception as e:
-                logging.error(f"COPY ERROR {message_id}: {e}")
-
-        # =========================
-        # FALLBACK: FILE_ID (LEGACY)
-        # =========================
-        if fid:
-            try:
-                if ftype == "video":
-                    await message.answer_video(video=fid, protect_content=protect)
-                elif ftype == "photo":
-                    await message.answer_photo(photo=fid, protect_content=protect)
-                else:
-                    await message.answer_document(document=fid, protect_content=protect)
-
-                sent += 1
-
-            except Exception as e:
-                logging.error(f"FILE ERROR {fid}: {e}")
-        else:
-            logging.error("SKIP: NO MESSAGE_ID & NO FILE_ID")
-
-    # =========================
-    # SEND HEADER TERAKHIR
-    # =========================
-    if sent > 0:
-        await message.answer(
-            caption,
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-    else:
-        await message.answer(
-            "<b><i>❌ Failed to send all media</i></b>",
-            parse_mode="HTML"
-        )
+    await message.answer(
+        caption,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
 
     await state.clear()
 
