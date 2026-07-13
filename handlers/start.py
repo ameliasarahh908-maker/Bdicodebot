@@ -270,21 +270,25 @@ async def finish_upload(message: Message, state: FSMContext):
         parse_mode="HTML"
     )
 
+
 # =========================
 # HANDLE CODE (NO DEEPLINK)
-# =========================@router.message(F.text)
+# =========================
+
+@router.message(F.text)
 async def handle_code(message: Message, state: FSMContext):
 
-    # 🔥 penting: kalau lagi upload → skip
+    # kalau sedang proses upload, jangan baca kode
     if await state.get_state():
         return
 
     text = message.text.strip()
 
+    # abaikan command
     if text.startswith("/"):
         return
 
-    # IGNORE MENU BUTTON
+    # abaikan tombol menu
     menu_text = [
         "📤 Up File",
         "📥 Get File",
@@ -296,10 +300,13 @@ async def handle_code(message: Message, state: FSMContext):
     if text in menu_text:
         return
 
+    # kode minimal
     if len(text) < 6:
         return
 
     code = text
+
+    logging.info(f"CHECK FILE CODE: {code}")
 
     file = await fetchrow(
         """
@@ -309,6 +316,8 @@ async def handle_code(message: Message, state: FSMContext):
         """,
         code
     )
+
+    logging.info(f"DATABASE RESULT: {file}")
 
     if not file:
         return await message.answer(
