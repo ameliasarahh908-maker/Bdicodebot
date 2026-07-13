@@ -41,12 +41,221 @@ async def start_cmd(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
 
+@router.message(F.photo | F.video | F.document)
+async def auto_upload(message: Message, state: FSMContext):
+
+    data = await state.get_data()
+
+    if not data:
+        await state.set_state(UploadState.waiting_media)
+        await state.update_data(
+            media=[],
+            video=0,
+            photo=0,
+            doc=0,
+            share=True
+        )
+        data = await state.get_data()
+
+    media = data["media"]
+
+    item = None
+
+    if message.photo:
+        item = {"file_id": message.photo[-1].file_id, "type": "photo"}
+        data["photo"] += 1
+
+    elif message.video:
+        item = {"file_id": message.video.file_id, "type": "video"}
+        data["video"] += 1
+
+    elif message.document:
+        item = {"file_id": message.document.file_id, "type": "document"}
+        data["doc"] += 1
+
+    if not item:
+        return
+
+    media.append(item)
+
+    await state.update_data(**data)
+
+    await message.answer(
+        "✅ Media ditambahkan\n\nKlik DONE kalau sudah selesai",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="✅ DONE", callback_data="done_upload")]
+            ]
+        )
+    )
+
+@router.message(UploadState.waiting_media)
+async def collect_media(message: Message, state: FSMContext):
+
+    data = await state.get_data()
+    media = data["media"]
+
+    item = None
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        item = {"file_id": file_id, "type": "photo"}
+        data["photo"] += 1
+
+    elif message.video:
+        file_id = message.video.file_id
+        item = {"file_id": file_id, "type": "video"}
+        data["video"] += 1
+
+    elif message.document:
+        file_id = message.document.file_id
+        item = {"file_id": file_id, "type": "document"}
+        data["doc"] += 1
+
+    if not item:
+        return
+
+    media.append(item)
+
+    await state.update_data(**data)
+
+    await message.answer("✅ Media saved")
+
+@router.message(UploadState.waiting_media, F.text)
+async def ignore_text_upload(message: Message):
+    await message.answer("❌ Kirim media, bukan text")
+
+@router.callback_query(F.data == "done_upload")
+async def done_upload(call: CallbackQuery, state: FSMContext):
+
+    data = await state.get_data()
+
+    if not data.get("media"):
+        return await call.answer("No media!", show_alert=True)
+
+    await state.set_state(UploadState.choose_share)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📤 SHARE", callback_data="share"),
+                InlineKeyboardButton(text="🔒 NO SHARE", callback_data="noshare")
+            ]
+        ]
+    )
+
+    await call.message.answer(
+        "<b><i>Choose share setting</i></b>",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+@router.callback_query(F.data.in_(["share", "noshare"]))
+async def set_share(call: CallbackQuery, state: FSMContext):
+
+    share = call.data == "share"
+
+    await state.update_data(share=share)
+
+    await state.set_state(UploadState.choose_access)
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🆓 FREE", callback_data="free"),
+                InlineKeyboardButton(text="💰 PAID", callback_data="paid")
+            ]
+        ]
+    )
+
+    await call.message.answer(
+        "<b><i>Select access type</i></b>",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+@router.callback_query(F.data.in_(["free", "paid"]))
+async def set_access(call: CallbackQuery, state: FSMContext):
+
+    is_paid = call.data == "paid"
+
+    await state.update_data(is_paid=is_paid)
+
+    if is_paid:
+        await state.set_state(UploadState.set_price)
+        return await call.message.answer("💰 Send price")
+
+    await state.set_state(UploadState.set_title)
+    await call.message.answer("📝 Send title")
+
+@router.message(UploadState.set_price)
+async def input_price(message: Message, state: FSMContext):
+
+    if not message.text.isdigit():
+        return await message.answer("Invalid price")
+
+    await state.update_data(price=int(message.text))
+
+    await state.set_state(UploadState.set_title)
+
+    await message.answer("📝 Send title")
+
+import random
+import string
+
+def random_code():
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=10))
+
+
+@router.message(UploadState.set_title)
+async def finish_upload(message: Message, state: FSMContext):
+
+    data = await state.get_data()
+
+    title = message.text
+    media = data["media"]
+
+    video = data["video"]
+    photo = data["photo"]
+    doc = data["doc"]
+
+    part1 = random_code()
+    part2 = random_code()
+
+    code = f"zyxfidxbot_{part1}_{part2}_{video}v{photo}p{doc}d"
+
+    pool = await get_pool()
+
+    await pool.execute(
+        """
+        INSERT INTO files (code, title, media, is_paid, price, owner_id, share_media)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        """,
+        code,
+        title,
+        json.dumps(media),
+        data.get("is_paid", False),
+        data.get("price", 0),
+        message.from_user.id,
+        data.get("share", True)
+    )
+
+    await state.clear()
+
+    await message.answer(
+        f"<b><i>✅ UPLOAD SUCCESS</i></b>\n\n<code>{code}</code>",
+        parse_mode="HTML"
+    )
 
 # =========================
 # HANDLE CODE (NO DEEPLINK)
 # =========================
 @router.message(F.text)
-async def handle_code(message: Message):
+async def handle_code(message: Message, state: FSMContext):
+
+    # 🔥 penting: kalau lagi upload → skip
+    if await state.get_state():
+        return
 
     text = message.text.strip()
 
@@ -62,7 +271,7 @@ async def handle_code(message: Message):
 
     file = await pool.fetchrow(
         """
-        SELECT media, share_media, is_paid, price, owner_id
+        SELECT title, media, share_media, is_paid, price, owner_id
         FROM files
         WHERE code=$1
         """,
@@ -87,6 +296,7 @@ async def handle_code(message: Message):
     price = file["price"] or 0
     share_media = file.get("share_media", True)
     protect = not share_media
+    title=file["title"]
 
     # =========================
     # CHECK STATUS
@@ -118,7 +328,8 @@ async def handle_code(message: Message):
     mode = f"💰 Paid • Rp {price:,}".replace(",", ".") if is_paid else "🆓 Free"
 
     caption = (
-        "<b><i>📂 EARNFILEBOX</i></b>\n\n"
+        "<b><i>📂 ZYXFIDXBOT</i></b>\n\n"
+        f"<b><i>📌 TITLE :</i></b> {title}\n"
         f"<b><i>🔑 CODE :</i></b> <code>{code}</code>\n"
         f"<b><i>📦 FILE :</i></b> {len(media)}\n"
         f"<b><i>📂 MODE :</i></b> {mode}\n"
