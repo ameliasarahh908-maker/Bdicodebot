@@ -11,7 +11,7 @@ from states.upload import UploadState
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from utils.force_sub import check_force_sub
-from config import CHANNEL_DB
+from config import CHANNEL_ID
 from keyboards.join import join_kb
 from database import execute, fetchrow, fetchval
 
@@ -487,7 +487,7 @@ async def handle_code(message: Message, state: FSMContext):
             try:
                 await message.bot.copy_message(
                     chat_id=message.chat.id,
-                    from_chat_id=CHANNEL_DB,
+                    from_chat_id=CHANNEL_ID,
                     message_id=int(message_id),
                     protect_content=protect
                 )
