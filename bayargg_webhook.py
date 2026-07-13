@@ -2,8 +2,6 @@ import hmac
 import hashlib
 import logging
 
-logger = logging.getLogger(__name__)
-
 from fastapi import APIRouter, Request
 
 from bot import bot
@@ -12,10 +10,12 @@ from utils.redis_client import redis_client
 from handlers.page import send_page
 from config import BAYARGG_SECRET
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/bayargg", tags=["BayarGG"])
 
-SECRET_KEY = BAYARGG_SECRET.encode()
-ADMIN_CHAT_ID = -1003894841696
+SECRET_KEY = BAYARGG_WEBHOOK_SECRET.encode()
+ADMIN_CHAT_ID = -1004437365690
 
 
 def secure_compare(a: str, b: str) -> bool:
@@ -42,166 +42,94 @@ async def webhook(request: Request):
         return {"success": False, "message": "invalid json"}
 
     invoice_id = str(data.get("invoice_id", "")).strip()
-    status = str(data.get("status", "")).strip().lower()
+    status = str(data.get("status", "")).lower().strip()
 
     if not invoice_id:
-        return {
-            "success": False,
-            "message": "missing invoice"
-        }
+        return {"success": False, "message": "missing invoice"}
 
-    logger.info(
-        "BayarGG webhook | invoice=%s | status=%s",
-        invoice_id,
-        status
-    )
+    logger.info("Webhook | invoice=%s | status=%s", invoice_id, status)
 
     if status != "paid":
         return {"success": True, "message": "ignored"}
 
+    # =========================
+    # 🔒 ANTI DOUBLE PROCESS
+    # =========================
     redis_key = f"webhook:bayargg:{invoice_id}"
 
     try:
-        locked = await redis_client.set(
-            redis_key,
-            "1",
-            ex=86400,
-            nx=True
-        )
-
+        locked = await redis_client.set(redis_key, "1", ex=86400, nx=True)
         if not locked:
-            return {
-                "success": True,
-                "message": "already processed"
-            }
-
+            return {"success": True, "message": "already processed"}
     except Exception:
-        logger.exception("Redis lock failed")
+        logger.exception("Redis error")
 
     # =========================
-    # CEK VIP PAYMENT
+    # 💎 VIP PAYMENT
     # =========================
-
     vip_tx = await fetchrow(
         """
-        SELECT
-            user_id,
-            amount,
-            code,
-            status
+        SELECT user_id, amount, code, status
         FROM payments
-        WHERE invoice_id=$1
-          AND type='vip'
+        WHERE invoice_id=$1 AND type='vip'
         """,
         invoice_id
     )
 
     if vip_tx:
-
         updated = await execute(
             """
             UPDATE payments
-            SET
-                status='paid',
-                updated_at=NOW()
-            WHERE invoice_id=$1
-              AND type='vip'
-              AND status!='paid'
+            SET status='paid', updated_at=NOW()
+            WHERE invoice_id=$1 AND status!='paid'
             """,
             invoice_id
         )
 
         if updated == "UPDATE 0":
-            return {
-                "success": True,
-                "message": "vip already processed"
-            }
-
-        paket = vip_tx["code"]
+            return {"success": True, "message": "vip already"}
 
         vip_days = {
-            "vip1": 1,
-            "vip3": 3,
-            "vip5": 5,
-            "vip7": 7,
-            "vip10": 10,
-            "vip20": 20,
-            "vip30": 30
+            "vip1": 1, "vip3": 3, "vip5": 5,
+            "vip7": 7, "vip10": 10,
+            "vip20": 20, "vip30": 30
         }
 
-        days = vip_days.get(paket, 30)
+        days = vip_days.get(vip_tx["code"], 30)
 
         await execute(
             """
             UPDATE users
-            SET
-                vip = TRUE,
+            SET vip=TRUE,
                 vip_until =
                 CASE
-                    WHEN vip_until IS NULL
-                         OR vip_until < NOW()
+                    WHEN vip_until IS NULL OR vip_until < NOW()
                     THEN NOW() + ($2 || ' days')::interval
                     ELSE vip_until + ($2 || ' days')::interval
                 END
-            WHERE telegram_id = $1
+            WHERE telegram_id=$1
             """,
-            vip_tx["user_id"],
-            days
+            vip_tx["user_id"], days
         )
 
-        logger.info(
-            "VIP activated | user=%s | package=%s | days=%s",
+        await bot.send_message(
             vip_tx["user_id"],
-            paket,
-            days
+            (
+                "💎 <b><i>VIP ACTIVATED</i></b>\n\n"
+                f"<b><i>Duration:</i></b> {days} days"
+            ),
+            parse_mode="HTML"
         )
 
-        try:
-            await bot.send_message(
-                vip_tx["user_id"],
-                (
-                    "💎 <b>VIP BERHASIL DIAKTIFKAN</b>\n\n"
-                    f"Durasi : {days} hari"
-                ),
-                parse_mode="HTML"
-            )
-        except Exception:
-            logger.exception("vip notify failed")
-
-        try:
-            await bot.send_message(
-                ADMIN_CHAT_ID,
-                (
-                    "💎 <b>VIP PURCHASE</b>\n\n"
-                    f"👤 User : <code>{vip_tx['user_id']}</code>\n"
-                    f"📦 Paket : <code>{paket}</code>\n"
-                    f"🧾 Invoice : <code>{invoice_id}</code>\n"
-                    f"💰 Amount : Rp {vip_tx['amount']:,}"
-                ).replace(",", "."),
-                parse_mode="HTML"
-            )
-        except Exception:
-            logger.exception("vip admin notify failed")
-
-        return {
-            "success": True,
-            "message": "vip activated"
-        }
+        return {"success": True}
 
     # =========================
-    # CEK FILE PAYMENT
+    # 📂 FILE PAYMENT
     # =========================
-
     file_tx = await fetchrow(
         """
-        SELECT
-            user_id,
-            owner_id,
-            paid_price,
-            file_code,
-            status,
-            qr_message_id,
-            qr_chat_id
+        SELECT user_id, owner_id, paid_price, file_code, status,
+               qr_message_id, qr_chat_id
         FROM file_purchases
         WHERE payment_id=$1
         """,
@@ -209,40 +137,26 @@ async def webhook(request: Request):
     )
 
     if not file_tx:
-        logger.warning(
-            "Invoice %s tidak ditemukan",
-            invoice_id
-        )
-
-        return {
-            "success": False,
-            "message": "transaction not found"
-        }
+        return {"success": False, "message": "not found"}
 
     if file_tx["status"] == "paid":
-        return {
-            "success": True,
-            "message": "already paid"
-        }
+        return {"success": True, "message": "already"}
 
     updated = await execute(
         """
         UPDATE file_purchases
-        SET
-            status='paid',
-            paid_at=NOW()
-        WHERE payment_id=$1
-          AND status='pending'
+        SET status='paid', paid_at=NOW()
+        WHERE payment_id=$1 AND status='pending'
         """,
         invoice_id
     )
 
     if updated == "UPDATE 0":
-        return {
-            "success": True,
-            "message": "already processed"
-        }
+        return {"success": True, "message": "already"}
 
+    # =========================
+    # ❌ HAPUS QR
+    # =========================
     try:
         if file_tx["qr_message_id"]:
             await bot.delete_message(
@@ -250,96 +164,95 @@ async def webhook(request: Request):
                 message_id=file_tx["qr_message_id"]
             )
     except Exception:
-        logger.exception("Failed delete QR message")
-
-    try:
-        updated = await execute(
-            """
-            UPDATE users
-            SET balance = balance + $1
-            WHERE telegram_id = $2
-            """,
-            file_tx["paid_price"],
-            file_tx["owner_id"]
-        )
-
-        if updated == "UPDATE 0":
-            logger.warning(
-                "Owner %s tidak ditemukan",
-                file_tx["owner_id"]
-            )
-
-    except Exception:
-        logger.exception("failed update owner balance")
-
-    try:
-        await bot.send_message(
-            file_tx["user_id"],
-            "✅ <b>Pembayaran Berhasil!</b>\n\nFile kamu sudah aktif.",
-            parse_mode="HTML"
-        )
-    except Exception:
-        logger.exception("user notify failed")
-
+        logger.exception("delete QR gagal")
 
     # =========================
-    # SEND FILE OTOMATIS
+    # 🔓 AKSES USER
+    # =========================
+    await execute(
+        """
+        INSERT INTO user_access (user_id, file_code)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        """,
+        file_tx["user_id"],
+        file_tx["file_code"]
+    )
+
+    # =========================
+    # 📩 USER NOTIF
+    # =========================
+    await bot.send_message(
+        file_tx["user_id"],
+        (
+            "✅ <b><i>PAYMENT SUCCESSFUL</i></b>\n\n"
+            "<b><i>Your file is being delivered...</i></b>"
+        ),
+        parse_mode="HTML"
+    )
+
+    # =========================
+    # 🚀 SEND FILE
     # =========================
     try:
-        await send_page(
+        sent = await send_page(
             bot=bot,
             chat_id=file_tx["user_id"],
             user_id=file_tx["user_id"],
             code=file_tx["file_code"],
             page=1
         )
-        if not sent:
-            raise Exception("send_page returned False")
 
-        logger.info(
-            "File delivered | user=%s | code=%s",
-            file_tx["user_id"],
-            file_tx["file_code"]
-        )
+        if not sent:
+            raise Exception("send gagal")
 
     except Exception:
-        logger.exception(
-            "Failed deliver file | user=%s | code=%s",
-            file_tx["user_id"],
-            file_tx["file_code"]
-        )
+        logger.exception("Gagal kirim file")
 
         await bot.send_message(
             file_tx["user_id"],
-            "⚠️ Pembayaran berhasil, tetapi file gagal dikirim otomatis.\nSilakan hubungi admin."
+            (
+                "⚠️ <b><i>DELIVERY FAILED</i></b>\n\n"
+                "<b><i>Your payment was successful, but the file could not be sent automatically.</i></b>\n"
+                "<b><i>Please contact admin.</i></b>"
+            ),
+            parse_mode="HTML"
         )
 
+    # =========================
+    # 💸 OWNER NOTIF
+    # =========================
+    try:
+        await bot.send_message(
+            file_tx["owner_id"],
+            (
+                "💰 <b><i>FILE SOLD</i></b>\n\n"
+                f"<b><i>Code:</i></b> <code>{file_tx['file_code']}</code>\n"
+                f"<b><i>Amount:</i></b> Rp {file_tx['paid_price']:,}"
+            ).replace(",", "."),
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
 
     # =========================
-    # ADMIN NOTIFY
+    # 📊 ADMIN LOG
     # =========================
     try:
         await bot.send_message(
             ADMIN_CHAT_ID,
             (
-                "💰 <b>PAYMENT SUCCESS</b>\n\n"
-                f"🧾 Invoice : <code>{invoice_id}</code>\n"
-                f"👤 User : <code>{file_tx['user_id']}</code>\n"
-                f"📂 File : <code>{file_tx['file_code']}</code>\n"
-                f"💵 Amount : Rp {file_tx['paid_price']:,}"
+                "💰 <b><i>PAYMENT RECEIVED</i></b>\n\n"
+                f"<b><i>Invoice:</i></b> <code>{invoice_id}</code>\n"
+                f"<b><i>User:</i></b> <code>{file_tx['user_id']}</code>\n"
+                f"<b><i>File:</i></b> <code>{file_tx['file_code']}</code>\n"
+                f"<b><i>Amount:</i></b> Rp {file_tx['paid_price']:,}"
             ).replace(",", "."),
             parse_mode="HTML"
         )
-
     except Exception:
-        logger.exception("admin notify failed")
+        logger.exception("admin notify error")
 
+    logger.info("SUCCESS invoice=%s", invoice_id)
 
-    logger.info(
-        "Invoice %s processed successfully",
-        invoice_id
-    )
-
-    return {
-        "success": True
-    }
+    return {"success": True}
