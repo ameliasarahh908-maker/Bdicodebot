@@ -275,36 +275,39 @@ async def finish_upload(message: Message, state: FSMContext):
 # HANDLE CODE (NO DEEPLINK)
 # =========================
 
-@router.message(F.text)
+@router.message(GetFileState.wait_code)
 async def handle_code(message: Message, state: FSMContext):
 
-    # kalau sedang proses upload, jangan baca kode
-    if await state.get_state():
-        return
+    if not message.text:
+        return await message.answer(
+            "<b><i>❌ Empty code</i></b>",
+            parse_mode="HTML"
+        )
+
+    import re, json
 
     text = message.text.strip()
+    code = None
 
-    # abaikan command
-    if text.startswith("/"):
-        return
+    # =========================
+    # PARSE CODE (FLEXIBLE)
+    # =========================
+    m = re.search(r"getFile_([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+    if m:
+        code = m.group(1)
 
-    # abaikan tombol menu
-    menu_text = [
-        "📤 Up File",
-        "📥 Get File",
-        "📊 Account",
-        "📃 Help",
-        "💎 VIP / VVIP"
-    ]
+    if not code:
+        m = re.search(r"code\s*[:：]\s*([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+        if m:
+            code = m.group(1)
 
-    if text in menu_text:
-        return
+    if not code:
+        m = re.search(r"(DecoderFileBot[A-Za-z0-9_-]+)", text)
+        if m:
+            code = m.group(1)
 
-    # kode minimal
-    if len(text) < 6:
-        return
-
-    code = text
+    if not code:
+        code = text
 
     logging.info(f"CHECK FILE CODE: {code}")
 
@@ -325,19 +328,16 @@ async def handle_code(message: Message, state: FSMContext):
         code
     )
 
-    logging.info(f"DATABASE RESULT: {file}")
-
-
     if not file:
+        await state.clear()
         return await message.answer(
-            "<b><i>❌ Invalid file code</i></b>",
+            "<b><i>❌ File code not found</i></b>",
             parse_mode="HTML"
         )
 
     # =========================
-    # LOAD FILE DATA
+    # LOAD DATA
     # =========================
-
     is_paid = file["is_paid"]
     price = file["price"] or 0
     share_media = file["share_media"] if file["share_media"] is not None else True
@@ -345,45 +345,36 @@ async def handle_code(message: Message, state: FSMContext):
     protect = not share_media
     title = file["title"] or "Untitled"
 
-
     # =========================
-    # LOAD MEDIA OLD + NEW
+    # LOAD MEDIA
     # =========================
-
     raw_media = file["media"]
 
-    if raw_media:
-        try:
-            media = json.loads(raw_media)
-        except Exception:
-            media = []
-
-    else:
+    try:
+        media = json.loads(raw_media) if raw_media else []
+    except:
         media = []
 
-        # support database lama
-        if file["file_id"]:
-            media.append({
-                "type": "video",
-                "file_id": file["file_id"]
-            })
-
+    # support old database
+    if not media and file["file_id"]:
+        media.append({
+            "type": "video",
+            "file_id": file["file_id"]
+        })
 
     if not media:
+        await state.clear()
         return await message.answer(
-            "<b><i>❌ File kosong</i></b>",
+            "<b><i>❌ File is empty</i></b>",
             parse_mode="HTML"
         )
 
-
     # =========================
-    # CHECK ACCESS
+    # ACCESS CHECK
     # =========================
-
     vip = await fetchval(
         """
-        SELECT 1
-        FROM users
+        SELECT 1 FROM users
         WHERE telegram_id=$1
         AND vip=TRUE
         AND vip_until > NOW()
@@ -391,74 +382,52 @@ async def handle_code(message: Message, state: FSMContext):
         message.from_user.id
     )
 
-
     purchased = await fetchval(
         """
-        SELECT 1
-        FROM file_purchases
+        SELECT 1 FROM file_purchases
         WHERE user_id=$1
         AND file_code=$2
         AND status='paid'
-        LIMIT 1
         """,
         message.from_user.id,
         code
     )
 
-
     owner = message.from_user.id == file["owner_id"]
-
-
-    mode = (
-        f"💰 Paid • Rp {price:,}".replace(",", ".")
-        if is_paid
-        else "🆓 Free"
-    )
-
-
-    caption = (
-        "<b><i>📂 ZYXFIDXBOT</i></b>\n\n"
-        f"<b><i>📌 TITLE :</i></b> {title}\n"
-        f"<b><i>🔑 CODE :</i></b> <code>{code}</code>\n"
-        f"<b><i>📦 FILE :</i></b> {len(media)}\n"
-        f"<b><i>📂 MODE :</i></b> {mode}\n"
-        "<b><i>━━━━━━━━━━━━━━</i></b>"
-    )
-
 
     # =========================
     # LOCK FILE
     # =========================
-
     if is_paid and not vip and not owner and not purchased:
 
-        keyboard = InlineKeyboardMarkup(
+        kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
                         text=f"💳 Pay Rp {price:,}".replace(",", "."),
                         callback_data=f"buyfile:{code}"
                     )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="💎 Upgrade VIP",
-                        callback_data="vvip"
-                    )
                 ]
             ]
         )
 
+        await state.clear()
         return await message.answer(
-            caption + "\n\n<b><i>🔒 File is locked</i></b>",
+            "<b><i>🔒 This file is locked (Paid)</i></b>",
             parse_mode="HTML",
-            reply_markup=keyboard
+            reply_markup=kb
         )
 
-
     # =========================
-    # SEND MEDIA
+    # CAPTION
     # =========================
+    caption = (
+        "<b><i>📂 EARNFILEBOX</i></b>\n\n"
+        f"<b><i>📌 Title :</i></b> {title}\n"
+        f"<b><i>🔑 Code :</i></b> <code>{code}</code>\n"
+        f"<b><i>📦 Files :</i></b> {len(media)}\n"
+        "<b><i>━━━━━━━━━━━━━━</i></b>"
+    )
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -471,19 +440,19 @@ async def handle_code(message: Message, state: FSMContext):
         ]
     )
 
-
+    # =========================
+    # SEND MEDIA
+    # =========================
     sent = 0
-
 
     for item in media:
 
-        fid = item.get("file_id") or item.get("file")
+        fid = item.get("file_id")
         message_id = item.get("message_id")
-        ftype = item.get("type") or "document"
+        ftype = (item.get("type") or "document").lower()
 
-
+        # PRIORITY: MESSAGE_ID
         if message_id:
-
             try:
                 await message.bot.copy_message(
                     chat_id=message.chat.id,
@@ -491,25 +460,18 @@ async def handle_code(message: Message, state: FSMContext):
                     message_id=int(message_id),
                     protect_content=protect
                 )
-
                 sent += 1
                 continue
-
             except Exception as e:
-                logging.error(
-                    f"COPY MEDIA ERROR | {message_id} | {e}"
-                )
+                logging.error(f"COPY ERROR {message_id}: {e}")
                 continue
 
-
+        # FALLBACK: FILE_ID
         if not fid:
             continue
 
-
         try:
-
             if ftype == "video":
-
                 await message.answer_video(
                     video=fid,
                     caption=caption if sent == 0 else None,
@@ -518,9 +480,7 @@ async def handle_code(message: Message, state: FSMContext):
                     protect_content=protect
                 )
 
-
             elif ftype == "photo":
-
                 await message.answer_photo(
                     photo=fid,
                     caption=caption if sent == 0 else None,
@@ -529,9 +489,7 @@ async def handle_code(message: Message, state: FSMContext):
                     protect_content=protect
                 )
 
-
             else:
-
                 await message.answer_document(
                     document=fid,
                     caption=caption if sent == 0 else None,
@@ -540,23 +498,18 @@ async def handle_code(message: Message, state: FSMContext):
                     protect_content=protect
                 )
 
-
             sent += 1
 
-
-        except TelegramBadRequest as e:
-
-            logging.error(
-                f"INVALID FILE_ID {fid}: {e}"
-            )
-
+        except Exception as e:
+            logging.error(f"FILE_ID ERROR {fid}: {e}")
 
     if sent == 0:
-
         await message.answer(
-            "<b><i>❌ Semua media gagal dikirim</i></b>",
+            "<b><i>❌ Failed to send all media</i></b>",
             parse_mode="HTML"
         )
+
+    await state.clear()
 
 # =========================
 # PROCESS START
