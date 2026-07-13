@@ -310,14 +310,23 @@ async def handle_code(message: Message, state: FSMContext):
 
     file = await fetchrow(
         """
-        SELECT title, media, share_media, is_paid, price, owner_id
+        SELECT
+            title,
+            media,
+            file_id,
+            share_media,
+            is_paid,
+            price,
+            owner_id
         FROM files
-        WHERE code=$1
+        WHERE code = $1
+        LIMIT 1
         """,
         code
     )
 
     logging.info(f"DATABASE RESULT: {file}")
+
 
     if not file:
         return await message.answer(
@@ -325,26 +334,56 @@ async def handle_code(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
 
-    media = json.loads(file["media"] or "[]")
-
-    if not media:
-        return await message.answer(
-            "<b><i>❌ File is empty</i></b>",
-            parse_mode="HTML"
-        )
+    # =========================
+    # LOAD FILE DATA
+    # =========================
 
     is_paid = file["is_paid"]
     price = file["price"] or 0
-    share_media = file.get("share_media", True)
+    share_media = file["share_media"] if file["share_media"] is not None else True
+
     protect = not share_media
-    title=file["title"]
+    title = file["title"] or "Untitled"
+
 
     # =========================
-    # CHECK STATUS
+    # LOAD MEDIA OLD + NEW
     # =========================
+
+    raw_media = file["media"]
+
+    if raw_media:
+        try:
+            media = json.loads(raw_media)
+        except Exception:
+            media = []
+
+    else:
+        media = []
+
+        # support database lama
+        if file["file_id"]:
+            media.append({
+                "type": "video",
+                "file_id": file["file_id"]
+            })
+
+
+    if not media:
+        return await message.answer(
+            "<b><i>❌ File kosong</i></b>",
+            parse_mode="HTML"
+        )
+
+
+    # =========================
+    # CHECK ACCESS
+    # =========================
+
     vip = await fetchval(
         """
-        SELECT 1 FROM users
+        SELECT 1
+        FROM users
         WHERE telegram_id=$1
         AND vip=TRUE
         AND vip_until > NOW()
@@ -352,9 +391,11 @@ async def handle_code(message: Message, state: FSMContext):
         message.from_user.id
     )
 
+
     purchased = await fetchval(
         """
-        SELECT 1 FROM file_purchases
+        SELECT 1
+        FROM file_purchases
         WHERE user_id=$1
         AND file_code=$2
         AND status='paid'
@@ -364,9 +405,16 @@ async def handle_code(message: Message, state: FSMContext):
         code
     )
 
+
     owner = message.from_user.id == file["owner_id"]
 
-    mode = f"💰 Paid • Rp {price:,}".replace(",", ".") if is_paid else "🆓 Free"
+
+    mode = (
+        f"💰 Paid • Rp {price:,}".replace(",", ".")
+        if is_paid
+        else "🆓 Free"
+    )
+
 
     caption = (
         "<b><i>📂 ZYXFIDXBOT</i></b>\n\n"
@@ -377,9 +425,11 @@ async def handle_code(message: Message, state: FSMContext):
         "<b><i>━━━━━━━━━━━━━━</i></b>"
     )
 
+
     # =========================
-    # LOCKED
+    # LOCK FILE
     # =========================
+
     if is_paid and not vip and not owner and not purchased:
 
         keyboard = InlineKeyboardMarkup(
@@ -405,8 +455,9 @@ async def handle_code(message: Message, state: FSMContext):
             reply_markup=keyboard
         )
 
+
     # =========================
-    # SEND FILE
+    # SEND MEDIA
     # =========================
 
     keyboard = InlineKeyboardMarkup(
@@ -420,18 +471,20 @@ async def handle_code(message: Message, state: FSMContext):
         ]
     )
 
+
     sent = 0
+
 
     for item in media:
 
         fid = item.get("file_id") or item.get("file")
-        ftype = item.get("type", "document")
 
         if not fid:
             continue
 
-        logging.info(f"CURRENT BOT ID: {message.bot.id}")
-        logging.info(f"FILE ID: {fid}")
+
+        ftype = item.get("type") or "document"
+
 
         try:
 
@@ -445,6 +498,7 @@ async def handle_code(message: Message, state: FSMContext):
                     protect_content=protect
                 )
 
+
             elif ftype == "video":
 
                 await message.answer_video(
@@ -454,6 +508,7 @@ async def handle_code(message: Message, state: FSMContext):
                     reply_markup=keyboard if sent == 0 else None,
                     protect_content=protect
                 )
+
 
             else:
 
@@ -470,12 +525,9 @@ async def handle_code(message: Message, state: FSMContext):
 
 
         except Exception as e:
-
             logging.error(
-                f"SEND MEDIA ERROR | TYPE={ftype} | ID={fid} | {e}"
+                f"SEND MEDIA ERROR {ftype} {fid}: {e}"
             )
-
-            continue
 
 
     if sent == 0:
