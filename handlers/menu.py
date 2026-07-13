@@ -9,17 +9,17 @@ async def top_code(message: Message):
 
     await message.answer(
         "<b><i>🏆 TOP CODE</i></b>\n\n"
-        "⚙️ This feature is still under development.",
+        "<i>🚧 This feature is still under development.</i>",
         parse_mode="HTML"
     )
 
 
-@router.message(F.text == "💰 Search Harga")
+@router.message(F.text == "💰 Search Price")
 async def search_harga(message: Message):
 
     await message.answer(
-        "<b><i>💰 SEARCH HARGA</i></b>\n\n"
-        "⚙️ This feature is still under development.",
+        "<b><i>💰 SEARCH PRICE</i></b>\n\n"
+        "<i>🚧 This feature is still under development.</i>",
         parse_mode="HTML"
     )
 
@@ -29,16 +29,6 @@ async def search_code(message: Message):
 
     await message.answer(
         "<b><i>🔎 SEARCH CODE</i></b>\n\n"
-        "⚙️ This feature is still under development.",
-        parse_mode="HTML"
-    )
-
-
-@router.message(F.text == "💎 VIP / VVIP")
-async def vip_vvip(message: Message):
-
-    await message.answer(
-        "<b><i>💎 VIP / VVIP</i></b>\n\n"
-        "⚙️ This feature is still under development.",
+        "<i>🚧 This feature is still under development.</i>",
         parse_mode="HTML"
     )
