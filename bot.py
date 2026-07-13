@@ -31,6 +31,7 @@ dp = Dispatcher(storage=storage)
 # =========================
 # ROUTERS IMPORT
 # =========================
+from handlers.menu import router as menu_router
 from handlers.start import router as start_router
 from handlers.check_sub import router as check_sub_router
 from handlers.vip import router as vip_router
@@ -40,6 +41,7 @@ from handlers.top import router as top_router
 # =========================
 # REGISTER ROUTERS
 # =========================
+dp.include_router(menu_router)
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
 dp.include_router(vip_router)
