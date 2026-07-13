@@ -504,6 +504,11 @@ async def render_home_fast(bot, message, user_id, username, balance):
 
     await message.edit_text(
         text,
-        parse_mode="HTML",
+        parse_mode="HTML"
+    )
+
+    await bot.send_message(
+        user_id,
+        "Menu:",
         reply_markup=home_kb()
     )
