@@ -20,7 +20,7 @@ router = Router()
 PAGE_SIZE = 10
 
 SAME_PAGE_COOLDOWN = 3600      # 1 jam
-CHANGE_PAGE_COOLDOWN = 30      # 30 detik
+CHANGE_PAGE_COOLDOWN = 15      # 30 detik
 
 USER_LOCK = defaultdict(lambda: asyncio.Lock())
 
@@ -183,7 +183,7 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     ]
 
     caption = (
-        "𝗘𝗔𝗥𝗡𝗙𝗜𝗟𝗘𝗕𝗢𝗫\n"
+        "YZXFIDX\n"
         "━━━━━━━━━━━━━━━\n\n"
         f"🔑 CODE : {code}\n"
         f"📦 PAGE : {page}/{total_page}\n"
@@ -345,7 +345,7 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
         nav_msg = await bot.send_message(
             chat_id,
-            "📦 NAVIGATION",
+            "📦 PAGE",
             reply_markup=keyboard
         )
 
@@ -397,8 +397,8 @@ def build_page_buttons(code: str, page: int, total: int):
 
     for i in range(start, end + 1):
 
-        emoji = "🟡" if i == page else (
-            "🟢" if i < page else "🔴"
+        emoji = "🔲" if i == page else (
+            "▫️" if i < page else "▪️"
         )
 
         row.append(
@@ -494,7 +494,7 @@ async def page_handler(call: CallbackQuery):
             if sisa > 0:
 
                 return await call.answer(
-                    f"⏳ Tunggu {int(sisa)} detik sebelum pindah halaman.",
+                    f"⏳ Loading.. {int(sisa)} to wait page.",
                     show_alert=True
                 )
 
@@ -522,7 +522,7 @@ async def page_handler(call: CallbackQuery):
         if not file:
 
             return await call.answer(
-                "❌ File tidak ditemukan",
+                "❌ File Not Found",
                 show_alert=True
             )
 
@@ -548,7 +548,7 @@ async def page_handler(call: CallbackQuery):
         if page > total_page:
 
             return await call.answer(
-                "📄 Halaman sudah habis.",
+                "📄 Page is up.",
                 show_alert=True
             )
 
@@ -615,7 +615,7 @@ async def page_handler(call: CallbackQuery):
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text=f"💳 Bayar Rp {file['price']:,}".replace(",", "."),
+                            text=f"💳 Pay Rp {file['price']:,}".replace(",", "."),
                             callback_data=f"pay:{code}"
                         )
                     ]
@@ -624,9 +624,9 @@ async def page_handler(call: CallbackQuery):
 
 
             await call.message.answer(
-                "🔒 <b>FILE BERBAYAR</b>\n\n"
-                f"💰 Harga : Rp {file['price']:,}\n\n"
-                "Silakan beli file atau gunakan VIP.",
+                "🔒 <b>PAID FILES</b>\n\n"
+                f"💰 Price : Rp {file['price']:,}\n\n"
+                "continue paying or upgrade your account to vip or vvip.",
                 parse_mode="HTML",
                 reply_markup=kb
             )
@@ -661,6 +661,6 @@ async def page_handler(call: CallbackQuery):
 async def end_page(call: CallbackQuery):
 
     await call.answer(
-        "📄 Semua file sudah ditampilkan.",
+        "📄 all pages have been opened.",
         show_alert=True
     )
