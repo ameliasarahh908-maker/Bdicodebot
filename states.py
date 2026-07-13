@@ -2,49 +2,31 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 # =========================
-# GET FILE (input code)
-# =========================
-class GetFileState(StatesGroup):
-    wait_code = State()
-
-
-# =========================
-# UPLOAD FILE SYSTEM
+# 📤 UPLOAD FLOW (AUTO)
 # =========================
 class UploadState(StatesGroup):
-    wait_type = State()
-    wait_price = State()
+    input_price = State()
+    uploading = State()
 
 
 # =========================
-# BUY / PAYMENT FLOW
+# 🛒 BUY FLOW
 # =========================
 class BuyState(StatesGroup):
-    wait_payment = State()
-    wait_confirm = State()
+    waiting_payment = State()
+    verifying = State()
 
 
 # =========================
-# OPTIONAL: ADMIN / CONTROL (kalau nanti dipakai)
-# =========================
-class AdminState(StatesGroup):
-    wait_broadcast = State()
-    wait_user_action = State()
-
-
-# =========================
-# PAYMENT CHECK STATE (BayarGG webhook flow optional)
+# 💳 PAYMENT
 # =========================
 class PaymentState(StatesGroup):
-    wait_invoice = State()
-    wait_callback = State()
+    waiting_callback = State()
+
 
 # =========================
-# 💸 WITHDRAW
+# 🛠 ADMIN
 # =========================
-class WithdrawState(StatesGroup):
-    amount = State()
-    account_name = State()
-    account_number = State()
-    bank_name = State()
-    confirm = State()
+class AdminState(StatesGroup):
+    broadcast = State()
+    user_action = State()
