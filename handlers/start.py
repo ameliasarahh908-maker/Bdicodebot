@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
-from database import get_pool
+from database import execute, fetchrow, fetchval
 
 router = Router()
 
@@ -224,10 +224,8 @@ async def finish_upload(message: Message, state: FSMContext):
     part2 = random_code()
 
     code = f"zyxfidxbot_{part1}_{part2}_{video}v{photo}p{doc}d"
-
-    pool = await get_pool()
-
-    await pool.execute(
+    
+    await execute(
         """
         INSERT INTO files (code, title, media, is_paid, price, owner_id, share_media)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -268,9 +266,7 @@ async def handle_code(message: Message, state: FSMContext):
 
     code = text
 
-    pool = await get_pool()
-
-    file = await pool.fetchrow(
+    file = await fetchrow(
         """
         SELECT title, media, share_media, is_paid, price, owner_id
         FROM files
@@ -302,7 +298,7 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     # CHECK STATUS
     # =========================
-    vip = await pool.fetchval(
+    vip = await fetchval(
         """
         SELECT 1 FROM users
         WHERE telegram_id=$1
@@ -312,7 +308,7 @@ async def handle_code(message: Message, state: FSMContext):
         message.from_user.id
     )
 
-    purchased = await pool.fetchval(
+    purchased = await fetchval(
         """
         SELECT 1 FROM file_purchases
         WHERE user_id=$1
@@ -437,9 +433,7 @@ async def process_start(message, loading, user_id, username):
             reply_markup=join_kb()
         )
 
-    pool = await get_pool()
-
-    await pool.execute(
+    await execute(
         """
         INSERT INTO users (telegram_id, username, chat_id, balance)
         VALUES ($1,$2,$3,0)
@@ -451,7 +445,7 @@ async def process_start(message, loading, user_id, username):
         message.chat.id
     )
 
-    user = await pool.fetchrow(
+    user = await fetchrow(
         "SELECT username, balance FROM users WHERE telegram_id=$1",
         user_id
     )
@@ -470,9 +464,7 @@ async def process_start(message, loading, user_id, username):
 # =========================
 async def render_home_fast(bot, message, user_id, username, balance):
 
-    pool = await get_pool()
-
-    user = await pool.fetchrow(
+    user = await fetchrow(
         """
         SELECT vip, vip_until, vvip, vvip_until
         FROM users
