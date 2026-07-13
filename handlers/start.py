@@ -278,49 +278,30 @@ async def finish_upload(message: Message, state: FSMContext):
 @router.message(GetFileState.wait_code)
 async def handle_code(message: Message, state: FSMContext):
 
-    if not message.text:
+    import json
+
+    # =========================
+    # AUTO READ CODE
+    # =========================
+    text = (message.text or "").strip()
+
+    if not text:
         return await message.answer(
             "<b><i>❌ Empty code</i></b>",
             parse_mode="HTML"
         )
 
-    import re, json
-
-    text = message.text.strip()
-    code = None
-
-    # =========================
-    # PARSE CODE (FLEXIBLE)
-    # =========================
-    m = re.search(r"getFile_([A-Za-z0-9_-]+)", text, re.IGNORECASE)
-    if m:
-        code = m.group(1)
-
-    if not code:
-        m = re.search(r"code\s*[:：]\s*([A-Za-z0-9_-]+)", text, re.IGNORECASE)
-        if m:
-            code = m.group(1)
-
-    if not code:
-        m = re.search(r"(DecoderFileBot[A-Za-z0-9_-]+)", text)
-        if m:
-            code = m.group(1)
-
-    if not code:
-        code = text
+    # ambil kata pertama & bersihin
+    code = text.split()[0].strip()
 
     logging.info(f"CHECK FILE CODE: {code}")
 
+    # =========================
+    # FETCH FILE
+    # =========================
     file = await fetchrow(
         """
-        SELECT
-            title,
-            media,
-            file_id,
-            share_media,
-            is_paid,
-            price,
-            owner_id
+        SELECT title, media, file_id, share_media, is_paid, price, owner_id
         FROM files
         WHERE code = $1
         LIMIT 1
@@ -348,19 +329,17 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     # LOAD MEDIA
     # =========================
-    raw_media = file["media"]
-
     try:
-        media = json.loads(raw_media) if raw_media else []
+        media = json.loads(file["media"]) if file["media"] else []
     except:
         media = []
 
-    # support old database
+    # fallback database lama
     if not media and file["file_id"]:
-        media.append({
-            "type": "video",
+        media = [{
+            "type": "document",
             "file_id": file["file_id"]
-        })
+        }]
 
     if not media:
         await state.clear()
@@ -372,6 +351,8 @@ async def handle_code(message: Message, state: FSMContext):
     # =========================
     # ACCESS CHECK
     # =========================
+    user_id = message.from_user.id
+
     vip = await fetchval(
         """
         SELECT 1 FROM users
@@ -379,7 +360,7 @@ async def handle_code(message: Message, state: FSMContext):
         AND vip=TRUE
         AND vip_until > NOW()
         """,
-        message.from_user.id
+        user_id
     )
 
     purchased = await fetchval(
@@ -389,26 +370,24 @@ async def handle_code(message: Message, state: FSMContext):
         AND file_code=$2
         AND status='paid'
         """,
-        message.from_user.id,
+        user_id,
         code
     )
 
-    owner = message.from_user.id == file["owner_id"]
+    owner = user_id == file["owner_id"]
 
     # =========================
-    # LOCK FILE
+    # LOCK CHECK
     # =========================
     if is_paid and not vip and not owner and not purchased:
 
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"💳 Pay Rp {price:,}".replace(",", "."),
-                        callback_data=f"buyfile:{code}"
-                    )
-                ]
-            ]
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=f"💳 Pay Rp {price:,}".replace(",", "."),
+                    callback_data=f"buyfile:{code}"
+                )
+            ]]
         )
 
         await state.clear()
@@ -425,19 +404,16 @@ async def handle_code(message: Message, state: FSMContext):
         "<b><i>📂 EARNFILEBOX</i></b>\n\n"
         f"<b><i>📌 Title :</i></b> {title}\n"
         f"<b><i>🔑 Code :</i></b> <code>{code}</code>\n"
-        f"<b><i>📦 Files :</i></b> {len(media)}\n"
-        "<b><i>━━━━━━━━━━━━━━</i></b>"
+        f"<b><i>📦 Files :</i></b> {len(media)}"
     )
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📂 OPEN PAGE",
-                    callback_data=f"page:{code}:1"
-                )
-            ]
-        ]
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text="📂 OPEN PAGE",
+                callback_data=f"page:{code}:1"
+            )
+        ]]
     )
 
     # =========================
@@ -451,7 +427,7 @@ async def handle_code(message: Message, state: FSMContext):
         message_id = item.get("message_id")
         ftype = (item.get("type") or "document").lower()
 
-        # PRIORITY: MESSAGE_ID
+        # PRIORITAS: COPY MESSAGE (lebih stabil)
         if message_id:
             try:
                 await message.bot.copy_message(
@@ -464,9 +440,7 @@ async def handle_code(message: Message, state: FSMContext):
                 continue
             except Exception as e:
                 logging.error(f"COPY ERROR {message_id}: {e}")
-                continue
 
-        # FALLBACK: FILE_ID
         if not fid:
             continue
 
@@ -501,7 +475,7 @@ async def handle_code(message: Message, state: FSMContext):
             sent += 1
 
         except Exception as e:
-            logging.error(f"FILE_ID ERROR {fid}: {e}")
+            logging.error(f"FILE ERROR {fid}: {e}")
 
     if sent == 0:
         await message.answer(
