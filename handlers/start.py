@@ -281,163 +281,118 @@ async def handle_code(message: Message, state: FSMContext):
 
     import json
 
-    text = (message.text or "").strip()
-    if not text:
-        return await message.answer("<b><i>❌ Empty code</i></b>", parse_mode="HTML")
-
-    code = text.split()[0].strip()
-    logging.info(f"CHECK FILE CODE: {code}")
-
-    # =========================
-    # FETCH FILE
-    # =========================
-    file = await fetchrow(
-        """
-        SELECT title, media, share_media, is_paid, price, owner_id
-        FROM files
-        WHERE code = $1
-        LIMIT 1
-        """,
-        code
-    )
-
-    if not file:
-        await state.clear()
-        return await message.answer("<b><i>❌ File code not found</i></b>", parse_mode="HTML")
-
-    # =========================
-    # DATA
-    # =========================
-    is_paid = file["is_paid"]
-    price = file["price"] or 0
-    share_media = file["share_media"] if file["share_media"] is not None else True
-
-    protect = not share_media
-    title = file["title"] or "Untitled"
-
-    # =========================
-    # LOAD MEDIA
-    # =========================
     try:
-        media = json.loads(file["media"]) if file["media"] else []
-    except:
-        media = []
+        text = (message.text or "").strip()
+        if not text:
+            return await message.answer("❌ Empty code")
 
-    if not media:
-        await state.clear()
-        return await message.answer("<b><i>❌ File is empty</i></b>", parse_mode="HTML")
+        code = text.split()[0].strip()
+        logging.info(f"CHECK FILE CODE: {code}")
 
-    # =========================
-    # ACCESS CHECK
-    # =========================
-    user_id = message.from_user.id
-
-    vip = await fetchval(
-        """
-        SELECT 1 FROM users
-        WHERE telegram_id=$1
-        AND vip=TRUE
-        AND vip_until > NOW()
-        """,
-        user_id
-    )
-
-    purchased = await fetchval(
-        """
-        SELECT 1 FROM file_purchases
-        WHERE user_id=$1
-        AND file_code=$2
-        AND status='paid'
-        """,
-        user_id,
-        code
-    )
-
-    owner = user_id == file["owner_id"]
-
-    if is_paid and not vip and not owner and not purchased:
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[[
-                InlineKeyboardButton(
-                    text=f"💳 Pay Rp {price:,}".replace(",", "."),
-                    callback_data=f"buyfile:{code}"
-                )
-            ]]
+        # =========================
+        # FETCH FILE
+        # =========================
+        file = await fetchrow(
+            """
+            SELECT title, media, share_media, is_paid, price, owner_id
+            FROM files
+            WHERE code = $1
+            LIMIT 1
+            """,
+            code
         )
 
-        await state.clear()
-        return await message.answer(
-            "<b><i>🔒 This file is locked (Paid)</i></b>",
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+        if not file:
+            return await message.answer("❌ File code not found")
 
-    # =========================
-    # FILTER MEDIA VALID
-    # =========================
-    valid_media = []
-    invalid_count = 0
+        logging.info(f"DB RESULT: {file}")
 
-    for item in media:
-        mid = item.get("message_id")
-        if mid:
-            valid_media.append(mid)
-        else:
-            invalid_count += 1
+        # =========================
+        # DATA
+        # =========================
+        is_paid = file["is_paid"]
+        price = file["price"] or 0
+        share_media = file["share_media"] if file["share_media"] is not None else True
 
-    if not valid_media:
-        await state.clear()
-        return await message.answer(
-            "<b><i>❌ All media invalid (no message_id)</i></b>",
-            parse_mode="HTML"
-        )
+        protect = not share_media
+        title = file["title"] or "Untitled"
 
-    # =========================
-    # SEND MEDIA
-    # =========================
-    sent = 0
-
-    for mid in valid_media:
+        # =========================
+        # LOAD MEDIA
+        # =========================
         try:
-            await message.bot.copy_message(
-                chat_id=message.chat.id,
-                from_chat_id=CHANNEL_ID,
-                message_id=int(mid),
-                protect_content=protect
-            )
-            sent += 1
+            media = json.loads(file["media"]) if file["media"] else []
         except Exception as e:
-            logging.error(f"COPY ERROR {mid}: {e}")
+            logging.error(f"JSON ERROR: {e}")
+            media = []
 
-    # =========================
-    # CAPTION + INFO
-    # =========================
-    caption = (
-        "<b><i>📂 EARNFILEBOX</i></b>\n\n"
-        f"<b><i>📌 Title :</i></b> {title}\n"
-        f"<b><i>🔑 Code :</i></b> <code>{code}</code>\n"
-        f"<b><i>📦 Files :</i></b> {sent}\n"
-    )
+        logging.info(f"MEDIA PARSED: {media}")
 
-    if invalid_count > 0:
-        caption += f"\n⚠️ {invalid_count} file rusak (tidak bisa dikirim)"
+        if not media:
+            return await message.answer("❌ File kosong / rusak")
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text="📂 OPEN PAGE",
-                callback_data=f"page:{code}:1"
+        # =========================
+        # FILTER MEDIA
+        # =========================
+        valid_media = []
+        invalid_count = 0
+
+        for item in media:
+            mid = item.get("message_id")
+            if mid:
+                valid_media.append(mid)
+            else:
+                invalid_count += 1
+
+        logging.info(f"VALID: {valid_media}")
+        logging.info(f"INVALID COUNT: {invalid_count}")
+
+        # =========================
+        # KALAU TIDAK ADA VALID
+        # =========================
+        if not valid_media:
+            return await message.answer(
+                "❌ Semua file tidak valid\n\n"
+                "⚠️ Database kamu belum pakai message_id"
             )
-        ]]
-    )
 
-    await message.answer(
-        caption,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
+        # =========================
+        # SEND MEDIA
+        # =========================
+        sent = 0
 
-    await state.clear()
+        for mid in valid_media:
+            try:
+                await message.bot.copy_message(
+                    chat_id=message.chat.id,
+                    from_chat_id=CHANNEL_ID,
+                    message_id=int(mid),
+                    protect_content=protect
+                )
+                sent += 1
+            except Exception as e:
+                logging.error(f"COPY ERROR {mid}: {e}")
+
+        # =========================
+        # HASIL
+        # =========================
+        caption = (
+            f"📂 {title}\n"
+            f"🔑 {code}\n"
+            f"📦 terkirim: {sent}\n"
+        )
+
+        if invalid_count:
+            caption += f"⚠️ rusak: {invalid_count}"
+
+        await message.answer(caption)
+
+    except Exception as e:
+        logging.error(f"FATAL ERROR: {e}")
+        await message.answer("❌ Terjadi error sistem")
+
+    finally:
+        await state.clear()
 
 # =========================
 # PROCESS START
