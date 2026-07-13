@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -501,7 +501,7 @@ async def render_home_fast(bot, message, user_id, username, balance):
     expire = "-"
 
     if user:
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         if user["vvip"] and user["vvip_until"] and user["vvip_until"] > now:
             status = "👑 VVIP"
