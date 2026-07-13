@@ -397,8 +397,8 @@ def build_page_buttons(code: str, page: int, total: int):
 
     for i in range(start, end + 1):
 
-        emoji = "🟡" if i == page else (
-            "🟢" if i < page else "🔴"
+        emoji = "🔲" if i == page else (
+            "▫️" if i < page else "▪️"
         )
 
         row.append(
