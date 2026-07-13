@@ -11,6 +11,7 @@ from aiogram.types import (
 )
 
 from database import get_pool
+from utils.media_builder import build_album
 from utils.keyboard import build_page_buttons
 from services.access_service import check_access
 from utils.keyboard import build_page_buttons
