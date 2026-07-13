@@ -511,7 +511,7 @@ async def render_home_fast(bot, message, user_id, username, balance):
             expire = user["vip_until"].strftime("%d-%m-%Y %H:%M")
 
     text = (
-        "<b><i>📂 DECODER FILE BOT</i></b>\n\n"
+        "<b>📂 DECODER FILE BOT</b>\n\n"
         f"<b><i>🆔 ID :</i></b> <code>{user_id}</code>\n"
         f"<b><i>👤 Username :</i></b> @{username}\n"
         f"<b><i>💎 Status :</i></b> {status}\n"
