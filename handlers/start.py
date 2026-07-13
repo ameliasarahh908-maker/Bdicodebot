@@ -506,21 +506,22 @@ async def render_home_fast(bot, message, user_id, username, balance):
         if user["vvip"] and user["vvip_until"] and user["vvip_until"] > now:
             status = "👑 VVIP"
             expire = user["vvip_until"].strftime("%d-%m-%Y %H:%M")
+
         elif user["vip"] and user["vip_until"] and user["vip_until"] > now:
             status = "💎 VIP"
             expire = user["vip_until"].strftime("%d-%m-%Y %H:%M")
 
+
     text = (
-        "<b>📂 DECODER FILE BOT</b>\n\n"
+        "<b><i>📂 DECODER FILE BOT</i></b>\n\n"
         f"<b><i>🆔 ID :</i></b> <code>{user_id}</code>\n"
         f"<b><i>👤 Username :</i></b> @{username}\n"
         f"<b><i>💎 Status :</i></b> {status}\n"
         f"<b><i>⏳ Active :</i></b> {expire}\n"
     )
 
+
     await message.edit_text(
         text,
-        parse_mode="HTML",
-        reply_markup=home_kb()
+        parse_mode="HTML"
     )
-
