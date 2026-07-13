@@ -7,11 +7,11 @@ from aiogram.exceptions import (
 )
 
 # =========================
-# FORCE SUB CHANNELS
+# FORCE SUB CHANNELS (FIX)
 # =========================
 CHANNELS = [
-    -1004395938795,
-    -1003894841696,
+    -1004419102427,  # channel utama
+    -1004437365690,  # group chat
 ]
 
 
@@ -46,7 +46,7 @@ async def check_force_sub(bot: Bot, user_id: int) -> bool:
                 user_id,
                 e,
             )
-            return True
+            return True  # biar bot gak ngeblok user kalau error
 
         except TelegramForbiddenError as e:
             logging.error(
