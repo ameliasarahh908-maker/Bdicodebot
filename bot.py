@@ -4,7 +4,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage
 
 from config import BOT_TOKEN
-from redis import redis
+from redis_client import redis
 
 
 # =========================
