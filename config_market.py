@@ -1,9 +1,10 @@
-MARKET_FEE = 10          # persen
+# =========================
+# MARKET CONFIG
+# =========================
 
-MIN_WITHDRAW = 50000
+MARKET_NAME = "ZyxFidx Market"
 
 PAYMENT_PROVIDER = "bayargg"
 
-MARKET_NAME = "Decoder Market"
-
-AUTO_APPROVE_WITHDRAW = False
+# Tanpa fee & tanpa withdraw
+MARKET_FEE = 0
