@@ -424,11 +424,14 @@ async def handle_code(message: Message, state: FSMContext):
 
     for item in media:
 
-        fid = item.get("file_id")
+        fid = item.get("file_id") or item.get("file")
         ftype = item.get("type", "document")
 
         if not fid:
             continue
+
+        logging.info(f"CURRENT BOT ID: {message.bot.id}")
+        logging.info(f"FILE ID: {fid}")
 
         try:
 
