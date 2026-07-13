@@ -5,8 +5,11 @@ from aiogram.fsm.state import State, StatesGroup
 # 📤 UPLOAD FLOW (AUTO)
 # =========================
 class UploadState(StatesGroup):
-    input_price = State()
-    uploading = State()
+    waiting_media = State()
+    confirm_done = State()
+    choose_access = State()
+    set_price = State()
+    set_title = State()
 
 
 # =========================
