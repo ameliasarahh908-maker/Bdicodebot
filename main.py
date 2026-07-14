@@ -16,6 +16,7 @@ from handlers.bayargg import router as bayargg_router
 # workers
 from tasks.auto_delete import auto_delete_worker
 from tasks.payment_worker import payment_worker
+from tasks.vip_expired import vip_expired_worker
 
 
 # =========================
@@ -71,8 +72,9 @@ async def stop_task(name):
 async def start_workers():
     create_task("AUTO_DELETE", auto_delete_worker())
     create_task("PAYMENT", payment_worker())
+    create_task("VIP_EXPIRED", vip_expired_worker())
 
-    # ✅ polling bot (SATU-SATUNYA)
+    # polling bot
     create_task(
         "POLLING",
         dp.start_polling(
@@ -80,7 +82,6 @@ async def start_workers():
             allowed_updates=dp.resolve_used_update_types(),
         )
     )
-
 
 # =========================
 # FASTAPI LIFESPAN
