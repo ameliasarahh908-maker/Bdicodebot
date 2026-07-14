@@ -501,9 +501,18 @@ async def check_payment(call: CallbackQuery):
             invoice
         )
 
+
+        # Hapus QRIS jika pembayaran berhasil
+        try:
+            if purchase["qr_message_id"] and purchase["qr_chat_id"]:
+                await call.bot.delete_message(
+                    purchase["qr_chat_id"],
+                    purchase["qr_message_id"]
+                )
+        except Exception:
+            logger.exception("DELETE QR ERROR")
+        
         total = len(media_list)
-
-
         await call.message.answer(
             f"""
 🎉 <b>Pembayaran berhasil</b>
@@ -674,17 +683,14 @@ async def media_page(call: CallbackQuery):
     await call.answer()
 
 @router.callback_query(F.data.startswith("sendpage:"))
-async def send_page(call:CallbackQuery):
+async def send_page(call: CallbackQuery):
 
-    _,invoice,page=call.data.split(":")
+    _, invoice, page = call.data.split(":")
+    page = int(page)
 
-    page=int(page)
-
-
-    data=await safe_get(
+    data = await safe_get(
         f"paidmedia:{invoice}"
     )
-
 
     if not data:
         return await call.answer(
@@ -692,62 +698,82 @@ async def send_page(call:CallbackQuery):
             show_alert=True
         )
 
+    media_list = json.loads(data)
 
-    media_list=json.loads(data)
+    start = (page - 1) * PER_PAGE
+    end = start + PER_PAGE
 
-
-    start=(page-1)*PER_PAGE
-    end=start+PER_PAGE
-
-
-    sukses=0
+    items = media_list[start:end]
 
 
-    for item in media_list[start:end]:
+    from aiogram.types import (
+        InputMediaPhoto,
+        InputMediaVideo,
+        InputMediaDocument
+    )
 
-        try:
 
-            fid=item.get("file_id")
-            ftype=(item.get("type") or "").lower()
+    group = []
 
 
-            if ftype=="video":
+    for item in items:
 
-                await call.message.answer_video(
-                    fid,
-                    protect_content=True
+        fid = item.get("file_id")
+        ftype = (item.get("type") or "").lower()
+
+
+        if ftype == "photo":
+
+            group.append(
+                InputMediaPhoto(
+                    media=fid
                 )
-
-            elif ftype=="photo":
-
-                await call.message.answer_photo(
-                    fid,
-                    protect_content=True
-                )
-
-            elif ftype=="document":
-
-                await call.message.answer_document(
-                    fid,
-                    protect_content=True
-                )
-
-
-            sukses+=1
-
-            await asyncio.sleep(0.8)
-
-
-        except Exception:
-
-            logger.exception(
-                "SEND PAGE ERROR"
             )
 
 
-    await call.answer(
-        f"✅ {sukses} file dikirim"
-    )
+        elif ftype == "video":
+
+            group.append(
+                InputMediaVideo(
+                    media=fid
+                )
+            )
+
+
+        elif ftype == "document":
+
+            group.append(
+                InputMediaDocument(
+                    media=fid
+                )
+            )
+
+
+    try:
+
+        if group:
+
+            await call.message.answer_media_group(
+                media=group,
+                protect_content=True
+            )
+
+
+        await call.answer(
+            f"✅ Halaman {page} terkirim ({len(group)} media)"
+        )
+
+
+    except Exception:
+
+        logger.exception(
+            "SEND PAGE GROUP ERROR"
+        )
+
+        await call.answer(
+            "❌ Gagal kirim media",
+            show_alert=True
+        )
 
 @router.callback_query(F.data.startswith("sendall:"))
 async def send_all(call:CallbackQuery):
