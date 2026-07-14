@@ -21,7 +21,6 @@ dp = Dispatcher()
 # =========================
 # MIDDLEWARE
 # =========================
-
 dp.message.middleware(BanMiddleware())
 dp.callback_query.middleware(BanMiddleware())
 
@@ -32,7 +31,6 @@ dp.callback_query.middleware(MaintenanceMiddleware())
 # =========================
 # ROUTERS IMPORT
 # =========================
-
 from handlers.start import router as start_router
 from handlers.check_sub import router as check_sub_router
 from handlers.upfile import router as upfile_router
@@ -60,7 +58,6 @@ from handlers.notify import router as notify_router
 # =========================
 # REGISTER ROUTERS
 # =========================
-
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
 dp.include_router(upfile_router)
@@ -78,15 +75,39 @@ dp.include_router(my_code_router)
 dp.include_router(vvip_router)
 dp.include_router(help_router)
 
-# =========================
 # WITHDRAW
-# =========================
 dp.include_router(withdraw_router)
 dp.include_router(withdraw_confirm_router)
 
-# =========================
 # ADMIN
-# =========================
-
 dp.include_router(admin_router)
 dp.include_router(notify_router)
+
+
+# =========================
+# MAIN (ENTRY POINT)
+# =========================
+import asyncio
+import logging
+from database import get_pool, init_db, close_db
+
+
+async def main():
+    logging.basicConfig(level=logging.INFO)
+
+    # 🔌 CONNECT DB
+    await get_pool()
+
+    # 🛠 INIT DATABASE (AUTO CREATE + FIX)
+    await init_db()
+
+    try:
+        # 🚀 START BOT
+        await dp.start_polling(bot)
+    finally:
+        # 🔒 CLEAN SHUTDOWN
+        await close_db()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
