@@ -14,8 +14,8 @@ API_KEY = "API-91975f8ac089c185f5bb246e8a24fa9b0ddc2ff31c655e2e"
 # =========================
 # CEK BAYARGG API
 # =========================
-async def check_bayargg(order_id: str):
-    url = f"https://api.bayargg.com/v1/transaction/{order_id}"
+async def check_bayargg(invoice_id: str):
+    url = f"https://api.bayargg.com/v1/transaction/{invoice_id}"
 
     headers = {
         "Authorization": f"Bearer {API_KEY}"
@@ -26,7 +26,7 @@ async def check_bayargg(order_id: str):
             async with session.get(url, headers=headers, timeout=10) as res:
                 data = await res.json()
 
-                logging.info(f"🔍 BayarGG [{order_id}]: {data}")
+                logging.info(f"🔍 BayarGG [{invoice_id}]: {data}")
 
                 status = data.get("status")
 
@@ -68,7 +68,7 @@ async def payment_worker():
     while True:
         try:
             payments = await fetch("""
-                SELECT id, order_id, user_id, code, amount, expires_at
+                SELECT id, invoice_id, user_id, code, amount, expires_at
                 FROM payments
                 WHERE status = 'pending'
                 LIMIT 50
@@ -89,13 +89,13 @@ async def payment_worker():
                         WHERE id = $1 AND status = 'pending'
                     """, payment_id)
 
-                    logging.info(f"⏰ Expired: {p['order_id']}")
+                    logging.info(f"⏰ Expired: {p['invoice_id']}")
                     continue
 
                 # =========================
                 # CEK BAYARGG
                 # =========================
-                status = await check_bayargg(p["order_id"])
+                status = await check_bayargg(p["invoice_id"])
 
                 if status == "expired":
                     await execute("""
@@ -104,7 +104,7 @@ async def payment_worker():
                         WHERE id = $1 AND status = 'pending'
                     """, payment_id)
 
-                    logging.info(f"❌ Expired (API): {p['order_id']}")
+                    logging.info(f"❌ Expired (API): {p['invoice_id']}")
                     continue
 
                 if status == "paid":
@@ -127,7 +127,7 @@ async def payment_worker():
                         ON CONFLICT DO NOTHING
                     """, p["user_id"], p["code"])
 
-                    logging.info(f"✅ Paid: {p['order_id']}")
+                    logging.info(f"✅ Paid: {p['invoice_id']}")
 
                     # =========================
                     # KIRIM FILE
