@@ -1,195 +1,83 @@
-from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from fastapi import Request
 import logging
 import asyncio
 
 from database import fetchrow, execute
 from bot import bot
 from handlers.page import send_page
-from utils.bayargg import BayarGG
 
 logger = logging.getLogger(__name__)
 
-router = Router()
 
-status_map = {
-    "pending": "⏳ Menunggu pembayaran",
-    "expired": "❌ Kadaluarsa"
-}
+async def bayar_webhook(request: Request):
+    data = await request.json()
 
+    logger.info(f"🔥 WEBHOOK MASUK: {data}")
 
-@router.callback_query(F.data.startswith("check:"))
-async def check_payment(call: CallbackQuery):
-    invoice_id = call.data.split(":")[1]
+    invoice_id = data.get("invoice_id")
+    status = str(data.get("status", "")).lower()
 
-    try:
-        logger.info(
-            "Check payment | invoice=%s | user=%s",
-            invoice_id,
-            call.from_user.id
-        )
+    if not invoice_id:
+        return {"ok": False}
 
-        # =========================
-        # CEK PAYMENT GATEWAY
-        # =========================
+    if status not in ["paid", "success"]:
+        return {"ok": True}
+
+    # =========================
+    # AMBIL TRANSAKSI
+    # =========================
+    tx = await fetchrow(
+        """
+        SELECT user_id, file_code, status
+        FROM file_purchases
+        WHERE payment_id=$1
+        """,
+        invoice_id
+    )
+
+    if not tx:
+        logger.warning(f"Invoice tidak ditemukan: {invoice_id}")
+        return {"ok": True}
+
+    if tx["status"] == "paid":
+        logger.info(f"Sudah diproses: {invoice_id}")
+        return {"ok": True}
+
+    # =========================
+    # UPDATE STATUS
+    # =========================
+    await execute(
+        """
+        UPDATE file_purchases
+        SET status='paid', paid_at=NOW()
+        WHERE payment_id=$1
+        """,
+        invoice_id
+    )
+
+    # =========================
+    # KIRIM FILE (RETRY)
+    # =========================
+    for _ in range(3):
         try:
-            data = await BayarGG.check_payment(invoice_id)
-        except Exception:
-            return await call.answer(
-                "❌ Error gateway",
-                show_alert=True
+            await send_page(
+                bot=bot,
+                chat_id=tx["user_id"],
+                user_id=tx["user_id"],
+                code=tx["file_code"],
+                page=1
             )
 
-        if not data:
-            logger.error(
-                "Gateway returned empty response | invoice=%s",
-                invoice_id
-            )
-            return await call.answer(
-                "❌ Gagal cek payment",
-                show_alert=True
-            )
-
-        status = str(
-            data.get("status")
-            or data.get("payment_status")
-            or ""
-        ).lower()
-
-        logger.info(f"BAYARGG CHECK RESPONSE | {data}")
-        logger.info(f"PARSED STATUS | {status}")
-
-        # =========================
-        # AMBIL TRANSAKSI DB
-        # =========================
-        tx = await fetchrow(
-            """
-            SELECT user_id, file_code, status
-            FROM file_purchases
-            WHERE payment_id=$1
-            """,
-            invoice_id
-        )
-
-        if not tx:
-            logger.warning(
-                "Invoice not found | invoice=%s",
-                invoice_id
-            )
-            return await call.answer(
-                "Invoice tidak ditemukan",
-                show_alert=True
-            )
-
-        # =========================
-        # SUDAH DIPROSES
-        # =========================
-        if tx["status"] == "paid":
-            logger.info(
-                "Invoice already processed | invoice=%s",
-                invoice_id
-            )
-            return await call.answer(
-                "✅ Sudah diproses oleh sistem",
-                show_alert=True
-            )
-
-        # =========================
-        # BELUM BAYAR
-        # =========================
-        if status not in ["paid", "success"]:
-            return await call.answer(
-                status_map.get(status, "⏳ Menunggu pembayaran"),
-                show_alert=True
-            )
-
-        # =========================
-        # ✅ FORCE PROCESS
-        # =========================
-        logger.info("FORCE PROCESS PAYMENT | %s", invoice_id)
-
-        updated = await execute(
-            """
-            UPDATE file_purchases
-            SET
-                status='paid',
-                paid_at=NOW()
-            WHERE payment_id=$1
-              AND status='pending'
-            """,
-            invoice_id
-        )
-
-        if updated == "UPDATE 0":
-            return await call.answer(
-                "Sudah diproses",
-                show_alert=True
-            )
-
-        # =========================
-        # AMBIL DATA LENGKAP
-        # =========================
-        file_tx = await fetchrow(
-            """
-            SELECT
-                user_id,
-                owner_id,
-                paid_price,
-                file_code,
-                qr_message_id,
-                qr_chat_id
-            FROM file_purchases
-            WHERE payment_id=$1
-            """,
-            invoice_id
-        )
-
-        # =========================
-        # HAPUS QR MESSAGE
-        # =========================
-        try:
-            if file_tx["qr_message_id"]:
-                await bot.delete_message(
-                    chat_id=file_tx["qr_chat_id"],
-                    message_id=file_tx["qr_message_id"]
-                )
-        except Exception:
-            logger.exception("Failed delete QR")
-
-        # =========================
-        # KIRIM FILE (RETRY)
-        # =========================
-        success = False
-
-        for _ in range(3):
-            try:
-                await send_page(
-                    bot=bot,
-                    chat_id=file_tx["user_id"],
-                    user_id=file_tx["user_id"],
-                    code=file_tx["file_code"],
-                    page=1
-                )
-                success = True
-                break
-            except Exception as e:
-                logger.error(f"Retry send_page error: {e}")
-                await asyncio.sleep(1)
-
-        if success:
-            await call.message.answer(
+            await bot.send_message(
+                tx["user_id"],
                 "✅ Pembayaran berhasil! File sudah dikirim."
             )
-        else:
-            logger.error("Send file failed after retry")
-            await call.message.answer(
-                "⚠️ Pembayaran berhasil, tapi file gagal dikirim.\nHubungi admin."
-            )
 
-    except Exception:
-        logger.exception(
-            "Check payment failed | invoice=%s | user=%s",
-            invoice_id,
-            call.from_user.id
-        )
-        raise
+            logger.info(f"✅ FILE TERKIRIM: {invoice_id}")
+            break
+
+        except Exception as e:
+            logger.error(f"Retry send gagal: {e}")
+            await asyncio.sleep(1)
+
+    return {"ok": True}
