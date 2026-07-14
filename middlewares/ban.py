@@ -8,12 +8,8 @@ class BanMiddleware(BaseMiddleware):
 
     async def __call__(self, handler, event, data):
 
-        if isinstance(event, Message):
-            telegram_id = event.from_user.id
-
-        elif isinstance(event, CallbackQuery):
-            telegram_id = event.from_user.id
-
+        if isinstance(event, (Message, CallbackQuery)):
+            user_id = event.from_user.id
         else:
             return await handler(event, data)
 
@@ -23,18 +19,15 @@ class BanMiddleware(BaseMiddleware):
             """
             SELECT is_banned
             FROM users
-            WHERE telegram_id=$1
+            WHERE id=$1
             """,
-            telegram_id
+            user_id
         )
 
         if user and user["is_banned"]:
 
             if isinstance(event, Message):
-                await event.answer(
-                    "🚫 Akun Anda telah diblokir oleh admin."
-                )
-
+                await event.answer("🚫 Akun Anda telah diblokir.")
             else:
                 await event.answer(
                     "🚫 Akun Anda diblokir.",
