@@ -87,7 +87,7 @@ async def buy_vip(call: CallbackQuery):
             description=paket["name"],
             payment_url="https://www.bayar.gg/pay",
             callback_url=(
-                "https://earnfilebot-production.up.railway.app"
+                "https://worker-production-87c6.up.railway.app"
                 "/bayargg/webhook"
             ),
             customer_name=call.from_user.full_name,
