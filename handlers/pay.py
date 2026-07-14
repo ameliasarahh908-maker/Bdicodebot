@@ -13,6 +13,7 @@ from aiogram.types import (
     BufferedInputFile
 )
 
+from utils.redis_client import safe_set, safe_get, safe_delete
 from database import fetchrow, execute
 from utils.bayargg import BayarGG
 from utils.redis_client import safe_set, safe_delete
@@ -25,8 +26,70 @@ router = Router()
 PAY_LOCK_TTL = 30
 INVOICE_TTL = 3600
 
-
 CHECK_LOCK = set()
+
+
+# =========================
+# MEDIA PAGINATION
+# =========================
+
+PER_PAGE = 5
+
+
+def media_keyboard(invoice, page, total):
+
+    max_page = (total + PER_PAGE - 1) // PER_PAGE
+
+    buttons = []
+
+    nav = []
+
+    if page > 1:
+        nav.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=f"mpage:{invoice}:{page-1}"
+            )
+        )
+
+    nav.append(
+        InlineKeyboardButton(
+            text=f"{page}/{max_page}",
+            callback_data="none"
+        )
+    )
+
+    if page < max_page:
+        nav.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=f"mpage:{invoice}:{page+1}"
+            )
+        )
+
+    buttons.append(nav)
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="📤 Kirim Halaman",
+                callback_data=f"sendpage:{invoice}:{page}"
+            )
+        ]
+    )
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="📦 Kirim Semua",
+                callback_data=f"sendall:{invoice}"
+            )
+        ]
+    )
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
 
 
 @router.callback_query(F.data.startswith("pay:"))
@@ -412,157 +475,44 @@ async def check_payment(call: CallbackQuery):
 
         media_data = file["media"]
 
-
         if isinstance(media_data, str):
-
-            media_list = json.loads(
-                media_data
-            )
-
+            media_list = json.loads(media_data)
         else:
-
             media_list = media_data
 
 
-
         if not media_list:
-
             return await call.message.answer(
                 "❌ Media kosong"
             )
 
 
-
-        await call.message.answer(
-            "✅ Pembayaran berhasil\n\n"
-            "⏳ Mengirim file..."
+        await safe_set(
+            f"paidmedia:{invoice}",
+            json.dumps(media_list),
+            ex=3600
         )
 
 
-
-        sukses = 0
-
-
-        for item in media_list:
-
-
-            try:
-
-                file_id = item.get(
-                    "file_id"
-                )
-
-
-                file_type = (
-                    item.get("type")
-                    or ""
-                ).lower()
-
-
-
-                if not file_id:
-                    continue
-
-
-
-                if file_type == "photo":
-
-                    await call.message.answer_photo(
-                        photo=file_id,
-                        protect_content=True
-                    )
-
-
-                elif file_type == "video":
-
-                    await call.message.answer_video(
-                        video=file_id,
-                        protect_content=True
-                    )
-
-
-                elif file_type == "document":
-
-                    await call.message.answer_document(
-                        document=file_id,
-                        protect_content=True
-                    )
-
-
-                else:
-
-                    logger.warning(
-                        "TYPE TIDAK DIDUKUNG %s",
-                        file_type
-                    )
-
-                    continue
-
-
-
-                sukses += 1
-
-
-                await asyncio.sleep(0.8)
-
-
-
-            except Exception as e:
-
-                logger.exception(
-                    "SEND MEDIA ERROR %s",
-                    e
-                )
-
-
-
-        if sukses == 0:
-
-            return await call.message.answer(
-                "❌ Pembayaran sukses tapi media gagal dikirim"
-            )
-
-
-
-        # update paid setelah benar-benar terkirim
-
-        await execute(
-            """
-            UPDATE file_purchases
-            SET status='paid'
-            WHERE payment_id=$1
-            """,
-            invoice
-        )
+        total = len(media_list)
 
 
         await call.message.answer(
             f"""
-🎉 <b>Selesai</b>
+🎉 <b>Pembayaran berhasil</b>
 
-📦 Media terkirim:
-{sukses}/{len(media_list)}
+📦 Total Media:
+{total} file
+
+Silahkan pilih:
 """,
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=media_keyboard(
+                invoice,
+                1,
+                total
+            )
         )
-
-
-
-    except Exception:
-
-        logger.exception(
-            "CHECK PAYMENT ERROR"
-        )
-
-
-        await call.message.answer(
-            "❌ Terjadi error saat proses file"
-        )
-
-
-    finally:
-
-        CHECK_LOCK.discard(invoice)
 
 @router.callback_query(F.data.startswith("cancel:"))
 async def cancel_payment(call: CallbackQuery):
@@ -661,4 +611,194 @@ async def cancel_payment(call: CallbackQuery):
     await call.message.answer(
         "❌ <b>Pembayaran dibatalkan</b>",
         parse_mode="HTML"
+    )
+
+@router.callback_query(F.data.startswith("mpage:"))
+async def media_page(call: CallbackQuery):
+
+    _,invoice,page = call.data.split(":")
+
+    page=int(page)
+
+
+    data = await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
+
+    if not data:
+        return await call.answer(
+            "Session habis",
+            show_alert=True
+        )
+
+
+    media_list=json.loads(data)
+
+
+    await call.message.edit_reply_markup(
+        reply_markup=media_keyboard(
+            invoice,
+            page,
+            len(media_list)
+        )
+    )
+
+
+    await call.answer()
+
+@router.callback_query(F.data.startswith("sendpage:"))
+async def send_page(call:CallbackQuery):
+
+    _,invoice,page=call.data.split(":")
+
+    page=int(page)
+
+
+    data=await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
+
+    if not data:
+        return await call.answer(
+            "Session habis",
+            show_alert=True
+        )
+
+
+    media_list=json.loads(data)
+
+
+    start=(page-1)*PER_PAGE
+    end=start+PER_PAGE
+
+
+    sukses=0
+
+
+    for item in media_list[start:end]:
+
+        try:
+
+            fid=item["file_id"]
+            ftype=item["type"]
+
+
+            if ftype=="video":
+
+                await call.message.answer_video(
+                    fid,
+                    protect_content=True
+                )
+
+            elif ftype=="photo":
+
+                await call.message.answer_photo(
+                    fid,
+                    protect_content=True
+                )
+
+            elif ftype=="document":
+
+                await call.message.answer_document(
+                    fid,
+                    protect_content=True
+                )
+
+
+            sukses+=1
+
+            await asyncio.sleep(0.8)
+
+
+        except Exception:
+
+            logger.exception(
+                "SEND PAGE ERROR"
+            )
+
+
+    await call.answer(
+        f"✅ {sukses} file dikirim"
+    )
+
+@router.callback_query(F.data.startswith("sendall:"))
+async def send_all(call:CallbackQuery):
+
+    invoice=call.data.split(":")[1]
+
+
+    data=await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
+
+    if not data:
+        return await call.answer(
+            "Session habis",
+            show_alert=True
+        )
+
+
+    media_list=json.loads(data)
+
+
+    await call.message.answer(
+        f"📦 Mengirim {len(media_list)} file..."
+    )
+
+
+    sukses=0
+
+
+    for item in media_list:
+
+        try:
+
+            fid=item["file_id"]
+            ftype=item["type"]
+
+
+            if ftype=="video":
+
+                await call.message.answer_video(
+                    fid,
+                    protect_content=True
+                )
+
+            elif ftype=="photo":
+
+                await call.message.answer_photo(
+                    fid,
+                    protect_content=True
+                )
+
+            elif ftype=="document":
+
+                await call.message.answer_document(
+                    fid,
+                    protect_content=True
+                )
+
+
+            sukses+=1
+
+            await asyncio.sleep(1)
+
+
+        except Exception:
+
+            logger.exception(
+                "SEND ALL ERROR"
+            )
+
+
+    await call.message.answer(
+        f"""
+✅ Semua selesai
+
+📦 Terkirim:
+{sukses}/{len(media_list)}
+"""
     )
