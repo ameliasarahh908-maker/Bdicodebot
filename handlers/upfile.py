@@ -580,16 +580,18 @@ async def finalize_save(message: Message, state: FSMContext):
             (
                 id,
                 username,
-                first_name
+                full_name
             )
             VALUES
             ($1,$2,$3)
             ON CONFLICT (id)
-            DO NOTHING
+            DO UPDATE SET
+                username = EXCLUDED.username,
+                fullname = EXCLUDED.fullname
             """,
             message.from_user.id,
             message.from_user.username,
-            message.from_user.first_name
+            message.from_user.full_name
         )
 
         # =========================
