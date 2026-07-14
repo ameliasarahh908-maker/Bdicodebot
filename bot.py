@@ -41,7 +41,6 @@ from handlers.top import router as top_router
 from handlers.new_code import router as new_code_router
 from handlers.page import router as page_router
 from handlers.pay import router as pay_router
-from handlers.check import router as check_router
 from handlers.cancel import router as cancel_router
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
@@ -68,7 +67,6 @@ dp.include_router(top_router)
 dp.include_router(new_code_router)
 dp.include_router(page_router)
 dp.include_router(pay_router)
-dp.include_router(check_router)
 dp.include_router(cancel_router)
 dp.include_router(account_router)
 dp.include_router(my_code_router)
