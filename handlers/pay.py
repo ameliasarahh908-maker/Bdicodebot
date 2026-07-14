@@ -521,6 +521,25 @@ Silahkan pilih:
             )
         )
 
+
+    except Exception as e:
+
+        logger.exception(
+            "CHECK PAYMENT ERROR %s",
+            e
+        )
+
+        await call.message.answer(
+            "❌ Terjadi error saat proses pembayaran"
+        )
+
+
+    finally:
+
+        CHECK_LOCK.discard(invoice)
+
+
+
 @router.callback_query(F.data.startswith("cancel:"))
 async def cancel_payment(call: CallbackQuery):
 
