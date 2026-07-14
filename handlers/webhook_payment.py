@@ -36,11 +36,10 @@ async def bayar_webhook(request: Request):
     )
 
     if not tx:
-        logger.warning(f"Invoice tidak ditemukan: {invoice_id}")
         return {"ok": True}
 
     if tx["status"] == "paid":
-        logger.info(f"Sudah diproses: {invoice_id}")
+        logger.info(f"Duplicate webhook: {invoice_id}")
         return {"ok": True}
 
     # =========================
@@ -56,8 +55,37 @@ async def bayar_webhook(request: Request):
     )
 
     # =========================
+    # EDIT QR MESSAGE
+    # =========================
+    purchase = await fetchrow(
+        """
+        SELECT qr_chat_id, qr_message_id
+        FROM file_purchases
+        WHERE payment_id=$1
+        """,
+        invoice_id
+    )
+
+    if purchase and purchase["qr_message_id"]:
+        try:
+            await bot.edit_message_caption(
+                chat_id=purchase["qr_chat_id"],
+                message_id=purchase["qr_message_id"],
+                caption=(
+                    "✅ <b>PEMBAYARAN BERHASIL</b>\n\n"
+                    f"🧾 Invoice: <code>{invoice_id}</code>\n"
+                    "📦 File sudah dikirim ke kamu."
+                ),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.warning(f"Gagal edit QR: {e}")
+
+    # =========================
     # KIRIM FILE (RETRY)
     # =========================
+    sent = False
+
     for _ in range(3):
         try:
             await send_page(
@@ -68,16 +96,23 @@ async def bayar_webhook(request: Request):
                 page=1
             )
 
-            await bot.send_message(
-                tx["user_id"],
-                "✅ Pembayaran berhasil! File sudah dikirim."
-            )
-
-            logger.info(f"✅ FILE TERKIRIM: {invoice_id}")
+            sent = True
             break
 
         except Exception as e:
             logger.error(f"Retry send gagal: {e}")
             await asyncio.sleep(1)
+
+    if sent:
+        await bot.send_message(
+            tx["user_id"],
+            "✅ Pembayaran berhasil! File sudah dikirim."
+        )
+        logger.info(f"FILE TERKIRIM: {invoice_id}")
+    else:
+        await bot.send_message(
+            tx["user_id"],
+            "⚠️ Pembayaran berhasil, tapi file gagal dikirim.\nHubungi admin."
+        )
 
     return {"ok": True}
