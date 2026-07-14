@@ -1,6 +1,5 @@
 import json
 import logging
-
 import httpx
 
 from config import BAYARGG_API_KEY
@@ -49,51 +48,68 @@ class BayarGG:
             payload["customer_phone"] = customer_phone
 
         try:
-            logger.info("BayarGG create payment request")
-            logger.debug(
-                json.dumps(
-                    payload,
-                    indent=2,
-                    ensure_ascii=False
-                )
-            )
+            logger.info("🚀 CREATE PAYMENT")
+            logger.info(json.dumps(payload, indent=2, ensure_ascii=False))
 
-            async with httpx.AsyncClient(
-                timeout=30,
-                follow_redirects=True,
-                verify=False
-            ) as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.post(
                     f"{BASE_URL}/create-payment.php",
                     headers=headers,
                     json=payload
                 )
 
-            logger.info(
-                "Create payment status: %s",
-                response.status_code
-            )
-
-            logger.debug(
-                "Create payment body: %s",
-                response.text
-            )
+            logger.info(f"STATUS: {response.status_code}")
+            logger.info(f"BODY: {response.text}")
 
             response.raise_for_status()
 
-            data = response.json()
+            raw = response.json()
 
-            if not data.get("success"):
+            if not raw.get("success"):
                 raise Exception(
-                    data.get("error")
-                    or data.get("message")
-                    or str(data)
+                    raw.get("error")
+                    or raw.get("message")
+                    or str(raw)
                 )
 
-            return data.get("data", data)
+            data = raw.get("data", raw)
 
-        except Exception:
-            logger.exception("Create payment failed")
+            # =========================
+            # NORMALISASI DATA (PENTING)
+            # =========================
+            invoice_id = (
+                data.get("invoice_id")
+                or data.get("id")
+                or data.get("invoice")
+            )
+
+            qr_string = (
+                data.get("qris_string")
+                or data.get("qris")
+                or data.get("qr_string")
+                or data.get("qr")
+            )
+
+            final_amount = (
+                data.get("final_amount")
+                or data.get("amount")
+                or amount
+            )
+
+            if not invoice_id:
+                raise Exception("Invoice ID tidak ditemukan")
+
+            if not qr_string:
+                raise Exception("QR string tidak ditemukan")
+
+            return {
+                "invoice_id": invoice_id,
+                "qris_string": qr_string,
+                "final_amount": final_amount
+            }
+
+        except Exception as e:
+            logger.exception(f"❌ CREATE PAYMENT ERROR: {e}")
             return None
 
     @staticmethod
@@ -104,45 +120,41 @@ class BayarGG:
         }
 
         try:
-            async with httpx.AsyncClient(
-                timeout=30,
-                follow_redirects=True,
-                verify=False
-            ) as client:
+            async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(
                     f"{BASE_URL}/check-payment.php",
                     headers=headers,
-                    params={
-                        "invoice": invoice_id
-                    }
+                    params={"invoice": invoice_id}
                 )
 
-            logger.info(
-                "Check payment status: %s",
-                response.status_code
-            )
-
-            logger.debug(
-                "Check payment body: %s",
-                response.text
-            )
+            logger.info(f"CHECK STATUS: {response.status_code}")
+            logger.info(f"CHECK BODY: {response.text}")
 
             response.raise_for_status()
 
-            data = response.json()
+            raw = response.json()
 
-            if not data.get("success"):
+            if not raw.get("success"):
                 raise Exception(
-                    data.get("error")
-                    or data.get("message")
-                    or str(data)
+                    raw.get("error")
+                    or raw.get("message")
+                    or str(raw)
                 )
 
-            return data.get("data", data)
+            data = raw.get("data", raw)
 
-        except Exception:
-            logger.exception(
-                "Check payment failed | invoice=%s",
-                invoice_id
-            )
+            status = str(
+                data.get("status")
+                or data.get("payment_status")
+                or ""
+            ).lower()
+
+            return {
+                "invoice_id": invoice_id,
+                "status": status,
+                "raw": data
+            }
+
+        except Exception as e:
+            logger.exception(f"❌ CHECK PAYMENT ERROR: {e}")
             return None
