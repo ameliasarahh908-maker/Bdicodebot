@@ -455,20 +455,15 @@ Scan QR untuk membayar.
 
 
 # =================================================
-# CHECK PAYMENT + SEND FILE
+# CHECK PAYMENT + SEND MEDIA
 # =================================================
-
 
 @router.callback_query(F.data.startswith("check:"))
 async def check_payment(call: CallbackQuery):
 
-
     invoice = call.data.split(":")[1]
 
-
-    await call.answer(
-        "🔄 Mengecek..."
-    )
+    await call.answer("🔄 Mengecek pembayaran...")
 
 
     logger.info(
@@ -477,10 +472,7 @@ async def check_payment(call: CallbackQuery):
     )
 
 
-
-    result = await BayarGG.check_payment(
-        invoice
-    )
+    result = await BayarGG.check_payment(invoice)
 
 
     logger.info(
@@ -489,32 +481,29 @@ async def check_payment(call: CallbackQuery):
     )
 
 
-
     if not result:
-
         return await call.answer(
-            "❌ Gagal cek",
+            "❌ Gagal cek pembayaran",
             show_alert=True
         )
 
 
-
     status = (
         result.get("status")
-        or
-        result.get("payment_status")
+        or result.get("payment_status")
     )
 
 
-
     if status != "paid":
-
         return await call.answer(
             "⏳ Belum dibayar",
             show_alert=True
         )
 
 
+    # =========================
+    # AMBIL PURCHASE
+    # =========================
 
     purchase = await fetchrow(
         """
@@ -526,13 +515,20 @@ async def check_payment(call: CallbackQuery):
     )
 
 
-
     if not purchase:
-
         return await call.message.answer(
-            "❌ Data pembelian hilang"
+            "❌ Data pembelian tidak ditemukan"
         )
 
+
+    # anti double send
+
+    if purchase["status"] == "paid":
+
+        return await call.answer(
+            "✅ Sudah diproses",
+            show_alert=True
+        )
 
 
     await execute(
@@ -546,6 +542,10 @@ async def check_payment(call: CallbackQuery):
 
 
 
+    # =========================
+    # AMBIL FILE
+    # =========================
+
     file = await fetchrow(
         """
         SELECT *
@@ -556,6 +556,11 @@ async def check_payment(call: CallbackQuery):
     )
 
 
+    if not file:
+        return await call.message.answer(
+            "❌ File tidak ditemukan"
+        )
+
 
     logger.info(
         "SEND FILE DATA %s",
@@ -563,69 +568,101 @@ async def check_payment(call: CallbackQuery):
     )
 
 
+    # =========================
+    # PARSE MEDIA JSON
+    # =========================
 
-    if not file:
-
-        return await call.message.answer(
-            "❌ File tidak ditemukan"
-        )
-
+    import json
 
 
     try:
 
-
-        ftype = file["file_type"]
-
-
-        if ftype in [
-            "photo",
-            "image"
-        ]:
-
-            await call.message.answer_photo(
-                file["file_id"]
-            )
-
-
-        elif ftype=="video":
-
-
-            await call.message.answer_video(
-                file["file_id"]
-            )
-
-
-        else:
-
-
-            await call.message.answer_document(
-                file["file_id"]
-            )
-
-
-
-        await call.message.answer(
-            "✅ File berhasil dikirim"
+        media_list = json.loads(
+            file["media"]
         )
-
-
 
     except Exception:
 
         logger.exception(
-            "SEND FILE ERROR"
+            "MEDIA JSON ERROR"
         )
 
-        await call.message.answer(
-            "❌ Pembayaran sukses tapi file gagal dikirim, hubungi admin"
+        return await call.message.answer(
+            "❌ Data media rusak"
         )
 
 
 
+    # =========================
+    # KIRIM SEMUA MEDIA
+    # =========================
+
+    sukses = 0
+
+
+    for item in media_list:
+
+        try:
+
+            ftype = item.get("type")
+            fid = item.get("file_id")
+
+
+            if not fid:
+                continue
 
 
 
+            if ftype == "photo":
+
+                await call.message.answer_photo(
+                    fid
+                )
+
+
+            elif ftype == "video":
+
+                await call.message.answer_video(
+                    fid,
+                    protect_content=True
+                )
+
+
+            else:
+
+                await call.message.answer_document(
+                    fid,
+                    protect_content=True
+                )
+
+
+            sukses += 1
+
+
+            await asyncio.sleep(0.3)
+
+
+
+        except Exception as e:
+
+            logger.exception(
+                "SEND MEDIA ERROR %s",
+                e
+            )
+
+
+
+    if sukses == 0:
+
+        return await call.message.answer(
+            "❌ Pembayaran sukses tapi media gagal dikirim"
+        )
+
+
+    await call.message.answer(
+        f"✅ Pembayaran berhasil\n\n"
+        f"📦 {sukses} file berhasil dikirim"
+    )
 
 
 # =================================================
