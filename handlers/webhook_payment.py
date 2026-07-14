@@ -1,8 +1,11 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 import logging
+import asyncio
 
-from database import fetchrow
+from database import fetchrow, execute
+from bot import bot
+from handlers.page import send_page
 from utils.bayargg import BayarGG
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,6 @@ async def check_payment(call: CallbackQuery):
                 "Gateway returned empty response | invoice=%s",
                 invoice_id
             )
-
             return await call.answer(
                 "❌ Gagal cek payment",
                 show_alert=True
@@ -74,7 +76,6 @@ async def check_payment(call: CallbackQuery):
                 "Invoice not found | invoice=%s",
                 invoice_id
             )
-
             return await call.answer(
                 "Invoice tidak ditemukan",
                 show_alert=True
@@ -88,7 +89,6 @@ async def check_payment(call: CallbackQuery):
                 "Invoice already processed | invoice=%s",
                 invoice_id
             )
-
             return await call.answer(
                 "✅ Sudah diproses oleh sistem",
                 show_alert=True
@@ -104,23 +104,87 @@ async def check_payment(call: CallbackQuery):
             )
 
         # =========================
-        # SUDAH BAYAR TAPI BELUM DIPROSES WEBHOOK
+        # ✅ FORCE PROCESS
         # =========================
-        try:
-            await call.message.delete()
-        except Exception:
-            pass
+        logger.info("FORCE PROCESS PAYMENT | %s", invoice_id)
 
-        logger.info(
-            "Payment already paid, waiting webhook | invoice=%s",
+        updated = await execute(
+            """
+            UPDATE file_purchases
+            SET
+                status='paid',
+                paid_at=NOW()
+            WHERE payment_id=$1
+              AND status='pending'
+            """,
             invoice_id
         )
 
-        return await call.answer(
-            "⏳ Pembayaran sudah diterima.\n"
-            "Sedang diproses otomatis oleh server (webhook)...",
-            show_alert=True
+        if updated == "UPDATE 0":
+            return await call.answer(
+                "Sudah diproses",
+                show_alert=True
+            )
+
+        # =========================
+        # AMBIL DATA LENGKAP
+        # =========================
+        file_tx = await fetchrow(
+            """
+            SELECT
+                user_id,
+                owner_id,
+                paid_price,
+                file_code,
+                qr_message_id,
+                qr_chat_id
+            FROM file_purchases
+            WHERE payment_id=$1
+            """,
+            invoice_id
         )
+
+        # =========================
+        # HAPUS QR MESSAGE
+        # =========================
+        try:
+            if file_tx["qr_message_id"]:
+                await bot.delete_message(
+                    chat_id=file_tx["qr_chat_id"],
+                    message_id=file_tx["qr_message_id"]
+                )
+        except Exception:
+            logger.exception("Failed delete QR")
+
+        # =========================
+        # KIRIM FILE (RETRY)
+        # =========================
+        success = False
+
+        for _ in range(3):
+            try:
+                await send_page(
+                    bot=bot,
+                    chat_id=file_tx["user_id"],
+                    user_id=file_tx["user_id"],
+                    code=file_tx["file_code"],
+                    page=1
+                )
+                success = True
+                break
+            except Exception as e:
+                logger.error(f"Retry send_page error: {e}")
+                await asyncio.sleep(1)
+
+        if success:
+            await call.message.answer(
+                "✅ Pembayaran berhasil! File sudah dikirim."
+            )
+        else:
+            logger.error("Send file failed after retry")
+            await call.message.answer(
+                "⚠️ Pembayaran berhasil, tapi file gagal dikirim.\nHubungi admin."
+            )
 
     except Exception:
         logger.exception(
