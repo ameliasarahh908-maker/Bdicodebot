@@ -16,7 +16,6 @@ from aiogram.types import (
 from utils.redis_client import safe_set, safe_get, safe_delete
 from database import fetchrow, execute
 from utils.bayargg import BayarGG
-from utils.redis_client import safe_set, safe_delete
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +32,7 @@ CHECK_LOCK = set()
 # MEDIA PAGINATION
 # =========================
 
-PER_PAGE = 5
+PER_PAGE = 10
 
 
 def media_keyboard(invoice, page, total):
@@ -493,6 +492,14 @@ async def check_payment(call: CallbackQuery):
             ex=3600
         )
 
+        await execute(
+            """
+            UPDATE file_purchases
+            SET status='paid'
+            WHERE payment_id=$1
+            """,
+            invoice
+        )
 
         total = len(media_list)
 
@@ -681,8 +688,8 @@ async def send_page(call:CallbackQuery):
 
         try:
 
-            fid=item["file_id"]
-            ftype=item["type"]
+            fid=item.get("file_id")
+            ftype=(item.get("type") or "").lower()
 
 
             if ftype=="video":
@@ -784,7 +791,7 @@ async def send_all(call:CallbackQuery):
 
             sukses+=1
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
 
 
         except Exception:
@@ -802,3 +809,7 @@ async def send_all(call:CallbackQuery):
 {sukses}/{len(media_list)}
 """
     )
+
+@router.callback_query(F.data=="none")
+async def none_callback(call:CallbackQuery):
+    await call.answer()
