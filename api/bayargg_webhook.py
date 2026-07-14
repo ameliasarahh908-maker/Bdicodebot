@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Request
 
+from config_vip import VIP_PACKAGES
 from bot import bot
 from database import fetchrow, execute
 from utils.redis_client import redis_client
@@ -102,8 +103,7 @@ async def webhook(request: Request):
             """
             UPDATE payments
             SET
-                status='paid',
-                updated_at=NOW()
+                status='paid'
             WHERE invoice_id=$1
               AND type='vip'
               AND status!='paid'
@@ -119,17 +119,12 @@ async def webhook(request: Request):
 
         paket = vip_tx["code"]
 
-        vip_days = {
-            "vip1": 1,
-            "vip3": 3,
-            "vip5": 5,
-            "vip7": 7,
-            "vip10": 10,
-            "vip20": 20,
-            "vip30": 30
-        }
+        paket_data = VIP_PACKAGES.get(paket)
 
-        days = vip_days.get(paket, 30)
+        if not paket_data:
+            days = 1
+        else:
+            days = paket_data["days"]
 
         await execute(
             """
@@ -286,7 +281,7 @@ async def webhook(request: Request):
     # SEND FILE OTOMATIS
     # =========================
     try:
-        await send_page(
+        sent = await send_page(
             bot=bot,
             chat_id=file_tx["user_id"],
             user_id=file_tx["user_id"],
