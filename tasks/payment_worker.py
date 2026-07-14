@@ -8,7 +8,7 @@ from database import fetch, execute
 from bot import bot
 
 
-API_KEY = "API_KEY_KAMU"
+API_KEY = "API-91975f8ac089c185f5bb246e8a24fa9b0ddc2ff31c655e2e"
 
 
 # =========================
