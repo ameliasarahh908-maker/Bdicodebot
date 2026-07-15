@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import re
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # =========================
-# BOT INSTANCE
+# BOT
 # =========================
 backup_bot = Bot(
     token=BACKUP_BOT_TOKEN,
@@ -44,6 +45,28 @@ backup_dp.include_router(router)
 
 
 # =========================
+# NORMALIZE CODE
+# =========================
+def clean_code(text: str):
+
+    text = text.strip()
+
+    # buang link kalau user paste full link
+    if "getFile_" in text:
+        text = text.split("getFile_")[-1]
+
+    # hapus karakter aneh
+    text = re.sub(
+        r"[^a-zA-Z0-9]",
+        "",
+        text
+    )
+
+    return text
+
+
+
+# =========================
 # START LINK
 # =========================
 @router.message(CommandStart())
@@ -52,24 +75,22 @@ async def start_handler(message: Message):
     args = message.text.split()
 
 
-    # /start biasa
     if len(args) < 2:
 
         return await message.answer(
             "🤖 Backup Bot Aktif\n\n"
-            "Kirim kode file atau gunakan bot utama."
+            "Tempel kode file."
         )
 
 
     payload = args[1]
 
 
-    if payload.startswith("getFile_"):
+    if "getFile_" in payload:
 
-        code = payload.replace(
-            "getFile_",
-            ""
-        )
+        code = payload.split(
+            "getFile_"
+        )[-1]
 
         return await send_file(
             message,
@@ -78,34 +99,40 @@ async def start_handler(message: Message):
 
 
     return await message.answer(
-        "❌ Kode tidak valid."
+        "❌ Link tidak valid."
     )
 
+
+
 # =========================
-# MANUAL CODE / REDIRECT
+# CODE HANDLER
 # =========================
 @router.message(F.text)
 async def code_handler(message: Message):
 
-    text = message.text.strip()
+    text = clean_code(
+        message.text
+    )
 
 
-    if text.startswith("/"):
+    if not text:
         return
 
 
-    # =========================
-    # COBA CARI CODE
-    # =========================
     pool = await get_pool()
 
 
+    # =========================
+    # CARI CODE FLEXIBLE
+    # =========================
     row = await pool.fetchrow(
         """
         SELECT code
         FROM files
-        WHERE LOWER(code)=LOWER($1)
-        OR LOWER(code) LIKE '%' || LOWER($1)
+        WHERE
+            LOWER(code)=LOWER($1)
+            OR LOWER(code) LIKE '%' || LOWER($1)
+            OR LOWER($1) LIKE '%' || LOWER(code)
         LIMIT 1
         """,
         text
@@ -122,15 +149,16 @@ async def code_handler(message: Message):
 
     # =========================
     # BUKAN CODE
-    # ARAHKAN BOT UTAMA
     # =========================
     await message.answer(
         "🤖 Gunakan Bot Utama untuk upload, akun, dan fitur lainnya.\n\n"
         f"➡️ {BOT_URL}"
     )
 
+
+
 # =========================
-# SEND FILE STORAGE
+# SEND FILE
 # =========================
 async def send_file(
     message: Message,
@@ -148,7 +176,8 @@ async def send_file(
             is_paid,
             price
         FROM files
-        WHERE code=$1
+        WHERE LOWER(code)=LOWER($1)
+        LIMIT 1
         """,
         code
     )
@@ -161,6 +190,7 @@ async def send_file(
         )
 
 
+
     if row["is_paid"]:
 
         return await message.answer(
@@ -170,9 +200,6 @@ async def send_file(
 
 
 
-    # =========================
-    # LOAD MEDIA
-    # =========================
     try:
 
         media = json.loads(
@@ -207,43 +234,36 @@ async def send_file(
 
 
     # =========================
-    # COPY FROM STORAGE CHANNEL
+    # COPY STORAGE
     # =========================
     for item in media:
 
         try:
 
-            storage_message_id = item.get(
+            msg_id = item.get(
                 "message_id"
             )
 
 
-            if not storage_message_id:
-
+            if not msg_id:
                 continue
 
 
 
             await backup_bot.copy_message(
                 chat_id=message.chat.id,
-
                 from_chat_id=STORAGE_CHANNEL_ID,
-
-                message_id=storage_message_id
+                message_id=msg_id
             )
 
 
-            # anti flood
-            await asyncio.sleep(0.3)
-
+            await asyncio.sleep(
+                0.3
+            )
 
 
         except Exception as e:
 
             logger.error(
-                f"COPY STORAGE ERROR: {e}"
-            )
-
-            await message.answer(
-                "❌ Gagal mengirim salah satu file."
+                f"COPY ERROR: {e}"
             )
