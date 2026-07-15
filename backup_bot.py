@@ -5,6 +5,7 @@ import asyncio
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart
+from aiogram.client.default import DefaultBotProperties  # ✅ TAMBAHAN
 
 from config import BACKUP_BOT_TOKEN
 from database import get_pool
@@ -18,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 # =========================
-# BOT INSTANCE
+# BOT INSTANCE (FIX)
 # =========================
 backup_bot = Bot(
     token=BACKUP_BOT_TOKEN,
-    parse_mode="HTML"
+    default=DefaultBotProperties(parse_mode="HTML")  # ✅ FIX
 )
 
 backup_dp = Dispatcher()
