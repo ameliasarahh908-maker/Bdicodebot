@@ -10,10 +10,6 @@ from config import TIMEZONE
 from bot import bot, dp
 from database import get_pool, close_db
 
-# routers
-from handlers.bayargg import router as bayargg_router
-from handlers.start import router as start_router   # ⬅️ TAMBAH INI
-
 # workers
 from tasks.auto_delete import auto_delete_worker
 from tasks.payment_worker import payment_worker
@@ -86,15 +82,14 @@ async def lifespan(app: FastAPI):
     me = await bot.get_me()
     logging.info(f"Bot: @{me.username}")
 
-    # include routers
-    dp.include_router(start_router)
-    dp.include_router(bayargg_router)
 
     await start_workers()
 
     yield
 
-    # shutdown
+    # =========================
+    # SHUTDOWN
+    # =========================
     logging.info("SHUTDOWN")
 
     for name in list(tasks.keys()):
