@@ -157,7 +157,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
 
 # =========================
-# RECEIVE MEDIA
+# RECEIVE MEDIA (FINAL FIX)
 # =========================
 @router.message(F.document | F.video | F.photo)
 async def receive_media(message: Message, state: FSMContext):
@@ -197,118 +197,70 @@ async def receive_media(message: Message, state: FSMContext):
             file_name = None
             file_size = getattr(file, "file_size", 0)
 
-
         file_id = file.file_id
-
 
         # =========================
         # DUPLICATE CHECK
         # =========================
-        if any(
-            x["file_id"] == file_id
-            for x in media
-        ):
+        if any(x["file_id"] == file_id for x in media):
             return
 
+        # =========================
+        # SAVE MEDIA (ANTI BUG)
+        # =========================
+        new_media = list(media)
 
-        # =========================
-        # SAVE MEDIA
-        # =========================
-        media.append({
+        new_media.append({
             "file_id": file_id,
             "type": media_type,
             "file_name": file_name,
             "file_size": file_size
         })
 
-        await state.update_data(
-            media=media
-        )
+        await state.update_data(media=new_media)
 
-
-        # =========================
-        # DELETE USER MESSAGE
-        # =========================
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
+        # ambil ulang biar sinkron
+        data = await state.get_data()
+        media = data.get("media", [])
 
         # =========================
-        # PROGRESS UI
+        # BUILD UI
         # =========================
-        total = len(media)
-
-        percent = int(
-            (total / MAX_MEDIA) * 100
-        )
-
-        blocks = min(
-            10,
-            int((total / MAX_MEDIA) * 10)
-        )
-
-        bar = (
-            "█" * blocks +
-            "░" * (10 - blocks)
-        )
-
-
         text = (
-            "📦 <b>UPLOAD MANAGER</b>\n\n"
-            f"📁 Total File : <b>{total}</b>\n"
-            f"📊 Progress : [{bar}] {percent}%\n"
-            f"📥 Maksimal : {MAX_MEDIA}\n\n"
-            "Jika selesai upload,\n"
-            "tekan tombol <b>STOP & SAVE</b>."
+            "📦 <b>UPLOAD MODE</b>\n\n"
+            f"📁 Total File: <b>{len(media)}</b>\n\n"
+            "Jika sudah selesai tekan tombol di bawah."
         )
-
 
         kb = InlineKeyboardBuilder()
-
-        kb.button(
-            text="⏹ STOP & SAVE",
-            callback_data="save_upfile"
-        )
-
-        kb.button(
-            text="❌ CANCEL",
-            callback_data="cancel_upfile"
-        )
-
-        kb.adjust(2)
-
-
-        progress_id = data.get(
-            "progress_msg_id"
-        )
-
+        kb.button(text="⏹ STOP & SAVE", callback_data="save_upfile")
+        kb.button(text="❌ CANCEL", callback_data="cancel_upfile")
+        kb.adjust(1)
 
         # =========================
-        # CREATE / UPDATE PROGRESS
+        # DELETE PROGRESS LAMA
         # =========================
-        if not progress_id:
+        old_id = data.get("progress_msg_id")
 
-            msg = await message.answer(
-                text,
-                parse_mode="HTML",
-                reply_markup=kb.as_markup()
-            )
+        if old_id:
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=old_id
+                )
+            except:
+                pass
 
-            await state.update_data(
-                progress_msg_id=msg.message_id
-            )
+        # =========================
+        # SEND PROGRESS BARU
+        # =========================
+        sent = await message.answer(
+            text,
+            reply_markup=kb.as_markup(),
+            parse_mode="HTML"
+        )
 
-        else:
-
-            await safe_update(
-                message.bot,
-                message.chat.id,
-                progress_id,
-                text,
-                kb.as_markup()
-            )
+        await state.update_data(progress_msg_id=sent.message_id)
 
 
 # =========================
