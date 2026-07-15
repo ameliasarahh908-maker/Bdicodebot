@@ -84,46 +84,70 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
         await state.clear()
         await state.set_state(UploadState.upload)
 
-        if not await check_force_sub(call.bot, call.from_user.id):
+        # =========================
+        # FORCE SUB
+        # =========================
+        if not await check_force_sub(
+            call.bot,
+            call.from_user.id
+        ):
             return await call.message.answer(
                 "❌ Join channel terlebih dahulu.",
                 reply_markup=join_kb()
             )
 
-        msg = await call.message.edit_text("⏳ Loading...")
-        await asyncio.sleep(0.2)
 
-        await msg.edit_text(
+        # =========================
+        # DELETE OLD MENU
+        # =========================
+        try:
+            await call.message.delete()
+        except:
+            pass
+
+
+        # =========================
+        # CREATE UPLOAD MESSAGE
+        # =========================
+        msg = await call.message.answer(
             "📦 <b>UPLOAD MODE ACTIVE</b>\n\n"
             "📤 Kirim foto, video atau dokumen.\n"
             "Maksimal <b>200 file</b>.\n\n"
-            "Jika sudah selesai tekan tombol <b>STOP & SAVE</b>.",
+            "Setelah selesai kirim file,\n"
+            "tombol <b>STOP & SAVE</b> akan muncul.",
             parse_mode="HTML"
         )
 
+
+        # =========================
+        # SAVE SESSION
+        # =========================
         await state.update_data(
             upload_mode=True,
 
-            # Media
+            # media
             media=[],
 
-            # Informasi utama
+            # info
             title=None,
 
-            # Share
+            # share
             share_media=True,
 
-            # Paid / Free
+            # payment
             is_paid=False,
             price=0,
+            payment_provider=None,
 
-            # Counter (boleh tetap)
+            # counter
             view_count=0,
             download_count=0,
             favorite_count=0,
 
-            # Progress
+            # progress
             progress_msg_id=msg.message_id,
+
+            # lock
             saving=False
         )
 
@@ -148,36 +172,32 @@ async def receive_media(message: Message, state: FSMContext):
                 f"❌ Maksimal {MAX_MEDIA} file."
             )
 
-        # =========================
         # GET FILE INFO
-        # =========================
         if message.document:
             file = message.document
             media_type = "document"
             file_name = file.file_name
+            file_size = file.file_size
 
         elif message.video:
             file = message.video
             media_type = "video"
-            file_name = getattr(file, "file_name", None)
+            file_name = file.file_name
+            file_size = file.file_size
 
         else:
             file = message.photo[-1]
             media_type = "photo"
             file_name = None
+            file_size = getattr(file, "file_size", 0)
 
         file_id = file.file_id
-        file_size = file.file_size
 
-        # =========================
         # DUPLICATE CHECK
-        # =========================
         if any(x["file_id"] == file_id for x in media):
             return
 
-        # =========================
-        # SAVE
-        # =========================
+        # SAVE MEDIA
         media.append({
             "file_id": file_id,
             "type": media_type,
@@ -187,24 +207,23 @@ async def receive_media(message: Message, state: FSMContext):
 
         await state.update_data(media=media)
 
-        # =========================
         # DELETE USER MESSAGE
-        # =========================
         try:
             await message.delete()
         except:
             pass
 
-        # =========================
-        # PROGRESS UI
-        # =========================
+        # PROGRESS
         total = len(media)
 
         percent = int((total / MAX_MEDIA) * 100)
 
-        progress = min(10, int((total / MAX_MEDIA) * 10))
+        blocks = min(
+            10,
+            int((total / MAX_MEDIA) * 10)
+        )
 
-        bar = "█" * progress + "░" * (10 - progress)
+        bar = "█" * blocks + "░" * (10 - blocks)
 
         text = (
             "📦 <b>UPLOAD MANAGER</b>\n\n"
@@ -229,14 +248,28 @@ async def receive_media(message: Message, state: FSMContext):
 
         kb.adjust(2)
 
-        await safe_update(
-            message.bot,
-            message.chat.id,
-            data.get("progress_msg_id"),
-            text,
-            message.from_user.id,
-            kb.as_markup()
-        )
+        progress_id = data.get("progress_msg_id")
+
+        if not progress_id:
+            msg = await message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
+
+            await state.update_data(
+                progress_msg_id=msg.message_id
+            )
+
+        else:
+            await safe_update(
+                message.bot,
+                message.chat.id,
+                progress_id,
+                text,
+                message.from_user.id,
+                kb.as_markup()
+            )
 
 
 # =========================
