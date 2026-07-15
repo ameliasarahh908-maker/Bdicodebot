@@ -13,8 +13,13 @@ TIMEZONE = "Asia/Jakarta"
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+BACKUP_BOT_TOKEN = os.getenv("BACKUP_BOT_TOKEN")
+
 BOT_USERNAME = "ZyxFidxBot"
 BOT_URL = f"https://t.me/{BOT_USERNAME}"
+
+BACKUP_BOT_USERNAME = "Zyxfidzbot"
+BACKUP_BOT_URL = f"https://t.me/{BACKUP_BOT_USERNAME}"
 
 # =========================
 # DATABASE
@@ -55,7 +60,10 @@ ADMIN_IDS = [
 # VALIDATION
 # =========================
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN belum di-set di .env")
+    raise ValueError("BOT_TOKEN belum di-set di Railway Variables")
+
+if not BACKUP_BOT_TOKEN:
+    raise ValueError("BACKUP_BOT_TOKEN belum di-set di Railway Variables")
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL belum di-set di .env")
