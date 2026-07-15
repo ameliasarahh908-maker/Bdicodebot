@@ -21,6 +21,7 @@ from config import (
     BACKUP_BOT_URL,
     BACKUP_BOT_USERNAME
 )
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import get_pool
 from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
@@ -102,7 +103,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
 
     # =========================
-    # CEK VVIP
+    # CEK USER VVIP
     # =========================
     user = await pool.fetchrow(
         """
@@ -116,25 +117,53 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
     )
 
 
-    # BELUM ADA DATA
-    if not user:
-        return await call.message.answer(
-            "🔒 Fitur Upload khusus VVIP.\n\n"
-            "Silakan upgrade VVIP terlebih dahulu."
-        )
+    # =========================
+    # BUTTON UPGRADE
+    # =========================
+    upgrade_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💎 Upgrade VVIP",
+                    callback_data="vip_vvip"
+                )
+            ]
+        ]
+    )
 
 
     # =========================
-    # VALIDASI VVIP
+    # BELUM ADA AKUN
+    # =========================
+    if not user:
+
+        return await call.message.answer(
+            "🔒 <b>UPLOAD KHUSUS VVIP</b>\n\n"
+            "Fitur upload hanya tersedia untuk member VVIP.\n\n"
+            "Silakan upgrade terlebih dahulu.",
+            reply_markup=upgrade_kb,
+            parse_mode="HTML"
+        )
+
+
+
+    # =========================
+    # BUKAN VVIP
     # =========================
     if not user["is_vvip"]:
 
         return await call.message.answer(
             "🔒 <b>UPLOAD KHUSUS VVIP</b>\n\n"
-            "Fitur upload hanya tersedia untuk member VVIP.\n\n"
-            "💎 Upgrade VVIP untuk membuka fitur ini.",
+            "Upload file hanya tersedia untuk VVIP.\n\n"
+            "Keuntungan VVIP:\n"
+            "✅ Upload hingga 200 file\n"
+            "✅ Storage aman\n"
+            "✅ Generate code otomatis\n\n"
+            "Upgrade sekarang:",
+            reply_markup=upgrade_kb,
             parse_mode="HTML"
         )
+
 
 
     # =========================
@@ -147,13 +176,16 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
         if user["vvip_expired"] < datetime.now(timezone.utc):
 
             return await call.message.answer(
-                "⏳ Masa VVIP kamu sudah habis.\n\n"
-                "Silakan perpanjang VVIP."
+                "⏳ <b>VVIP sudah expired</b>\n\n"
+                "Perpanjang VVIP untuk upload lagi.",
+                reply_markup=upgrade_kb,
+                parse_mode="HTML"
             )
 
 
+
     # =========================
-    # LOCK
+    # LOCK UPLOAD
     # =========================
     async with user_lock(user_id):
 
@@ -178,8 +210,9 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
             )
 
 
+
         # =========================
-        # DELETE MENU
+        # DELETE MENU LAMA
         # =========================
         try:
             await call.message.delete()
@@ -187,14 +220,15 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
             pass
 
 
+
         # =========================
-        # UPLOAD MESSAGE
+        # START UPLOAD
         # =========================
         msg = await call.message.answer(
             "📦 <b>UPLOAD MODE ACTIVE</b>\n\n"
             "📤 Kirim foto, video atau dokumen.\n"
             "Maksimal <b>200 file</b>.\n\n"
-            "Setelah selesai tekan tombol "
+            "Jika selesai tekan tombol "
             "<b>STOP & SAVE</b>.",
             parse_mode="HTML"
         )
@@ -204,6 +238,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
         # SAVE SESSION
         # =========================
         await state.update_data(
+
             upload_mode=True,
 
             media=[],
