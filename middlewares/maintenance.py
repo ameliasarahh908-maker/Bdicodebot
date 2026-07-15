@@ -2,6 +2,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery
 from database import get_pool
 from handlers.admin.admins import is_admin
+from config import BOT_USERNAME
 
 
 class MaintenanceMiddleware(BaseMiddleware):
