@@ -19,13 +19,13 @@ def open_keyboard(code):
             [
                 InlineKeyboardButton(
                     text="📂 Open Page",
-                    callback_data=f"openpage:{code}"
+                    callback_data=f"page:{code}:1"
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="📤 Open All",
-                    callback_data=f"openall:{code}"
+                    callback_data=f"all:{code}"
                 )
             ]
         ]
@@ -49,17 +49,33 @@ async def open_page(call: CallbackQuery):
     )
 
 
-@router.callback_query(
-    F.data.startswith("openall:")
-)
+@router.callback_query(F.data.startswith("all:"))
 async def open_all(call: CallbackQuery):
-
     code = call.data.split(":")[1]
 
-    await call.answer()
+    pool = await get_pool()
+
+    file = await pool.fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE LOWER(code)=LOWER($1)
+        LIMIT 1
+        """,
+        code
+    )
+
+    if not file:
+        return await call.answer(
+            "❌ File tidak ditemukan",
+            show_alert=True
+        )
 
     await send_all(
         bot=call.bot,
         chat_id=call.message.chat.id,
-        code=code
+        code=code,
+        file=file
     )
+
+    await call.answer()
