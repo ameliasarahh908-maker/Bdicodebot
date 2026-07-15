@@ -13,8 +13,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_ID, BOT_URL
-from config import BACKUP_BOT_URL
+from config import (
+    CHANNEL_ID,
+    BOT_URL,
+    BOT_USERNAME,
+    BACKUP_BOT_URL,
+    BACKUP_BOT_USERNAME
+)
 from database import get_pool
 from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
