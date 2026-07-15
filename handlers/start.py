@@ -23,18 +23,67 @@ router = Router()
 # =========================
 @router.message(CommandStart())
 async def start_cmd(message: Message, state: FSMContext):
+
     await state.clear()
 
     user_id = message.from_user.id
     username = message.from_user.username or "unknown"
 
-    loading = await message.answer("⚡ Loading...")
+
+    # =========================
+    # DEEP LINK FILE
+    # =========================
+    args = message.text.split(maxsplit=1)
+
+    if len(args) > 1:
+
+        payload = args[1]
+
+
+        if payload.startswith("getFile_"):
+
+            code = payload.replace(
+                "getFile_",
+                ""
+            )
+
+
+            # arahkan ke handler get file
+            from handlers.getfile import open_file_by_code
+
+            return await open_file_by_code(
+                message,
+                code
+            )
+
+
+    # =========================
+    # NORMAL START
+    # =========================
+    loading = await message.answer(
+        "⚡ Loading..."
+    )
+
 
     try:
-        await process_start(message, loading, user_id, username)
+
+        await process_start(
+            message,
+            loading,
+            user_id,
+            username
+        )
+
+
     except Exception as e:
-        logging.exception(f"START ERROR: {e}")
-        await loading.edit_text("❌ SYSTEM ERROR")
+
+        logging.exception(
+            f"START ERROR: {e}"
+        )
+
+        await loading.edit_text(
+            "❌ SYSTEM ERROR"
+        )
 
 
 # =========================
