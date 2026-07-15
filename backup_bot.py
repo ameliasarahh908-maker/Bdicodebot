@@ -5,9 +5,13 @@ import asyncio
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart
-from aiogram.client.default import DefaultBotProperties  # ✅ TAMBAHAN
+from aiogram.client.default import DefaultBotProperties
 
-from config import BACKUP_BOT_TOKEN
+from config import (
+    BACKUP_BOT_TOKEN,
+    STORAGE_CHANNEL_ID
+)
+
 from database import get_pool
 
 
@@ -15,130 +19,204 @@ from database import get_pool
 # LOG
 # =========================
 logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
 # =========================
-# BOT INSTANCE (FIX)
+# BOT INSTANCE
 # =========================
 backup_bot = Bot(
     token=BACKUP_BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML")  # ✅ FIX
+    default=DefaultBotProperties(
+        parse_mode="HTML"
+    )
 )
 
+
 backup_dp = Dispatcher()
+
 router = Router()
+
 backup_dp.include_router(router)
 
 
+
 # =========================
-# START (LINK HANDLER)
+# START LINK
 # =========================
 @router.message(CommandStart())
 async def start_handler(message: Message):
 
-    print("TEXT MASUK:", message.text)  # 🔥 DEBUG
-
     args = message.text.split()
 
-    # kalau cuma /start
+
     if len(args) < 2:
+
         return await message.answer(
-            "🤖 Backup Bot Aktif\n\nKirim kode file."
+            "🤖 Backup Bot Aktif\n\n"
+            "Kirim kode file."
         )
+
 
     payload = args[1]
 
-    # validasi format link
-    if payload.startswith("getFile_"):
-        code = payload.replace("getFile_", "")
-        return await send_file(message, code)
 
-    return await message.answer("❌ Kode tidak valid.")
+    if payload.startswith("getFile_"):
+
+        code = payload.replace(
+            "getFile_",
+            ""
+        )
+
+        return await send_file(
+            message,
+            code
+        )
+
+
+    return await message.answer(
+        "❌ Kode tidak valid."
+    )
+
 
 
 # =========================
-# MANUAL CODE HANDLER
+# MANUAL CODE
 # =========================
 @router.message(F.text)
 async def code_handler(message: Message):
 
     code = message.text.strip()
 
-    # biar gak bentrok sama /start
+
     if code.startswith("/"):
+
         return
 
-    await send_file(message, code)
+
+    await send_file(
+        message,
+        code
+    )
+
 
 
 # =========================
-# SEND FILE
+# SEND FILE STORAGE
 # =========================
-async def send_file(message: Message, code: str):
+async def send_file(
+    message: Message,
+    code: str
+):
 
     pool = await get_pool()
 
+
     row = await pool.fetchrow(
         """
-        SELECT title, media, is_paid, price
+        SELECT
+            title,
+            media,
+            is_paid,
+            price
         FROM files
         WHERE code=$1
         """,
         code
     )
 
+
     if not row:
-        return await message.answer("❌ File tidak ditemukan.")
+
+        return await message.answer(
+            "❌ File tidak ditemukan."
+        )
+
 
     if row["is_paid"]:
+
         return await message.answer(
             "🔒 File berbayar.\n"
             f"Harga: Rp {row['price']:,}".replace(",", ".")
         )
 
+
+
     # =========================
     # LOAD MEDIA
     # =========================
     try:
-        media = json.loads(row["media"])
-    except Exception:
-        return await message.answer("❌ Media rusak.")
+
+        media = json.loads(
+            row["media"]
+        )
+
+    except Exception as e:
+
+        logger.error(
+            f"JSON ERROR: {e}"
+        )
+
+        return await message.answer(
+            "❌ Data file rusak."
+        )
+
+
 
     if not media:
-        return await message.answer("❌ File kosong.")
 
-    # =========================
-    # INFO
-    # =========================
+        return await message.answer(
+            "❌ File kosong."
+        )
+
+
+
     await message.answer(
         f"📦 <b>{row['title']}</b>\n"
         f"📁 Total: {len(media)} file"
     )
 
+
+
     # =========================
-    # SEND FILE
+    # COPY FROM STORAGE CHANNEL
     # =========================
     for item in media:
 
         try:
-            file_id = item.get("file_id")
-            file_type = item.get("type", "document")
 
-            if not file_id:
+            storage_message_id = item.get(
+                "message_id"
+            )
+
+
+            if not storage_message_id:
+
                 continue
 
-            if file_type == "video":
-                await message.answer_video(file_id)
 
-            elif file_type == "photo":
-                await message.answer_photo(file_id)
 
-            else:
-                await message.answer_document(file_id)
+            await backup_bot.copy_message(
+                chat_id=message.chat.id,
 
-            # 🔥 anti flood
-            await asyncio.sleep(0.2)
+                from_chat_id=STORAGE_CHANNEL_ID,
+
+                message_id=storage_message_id
+            )
+
+
+            # anti flood
+            await asyncio.sleep(0.3)
+
+
 
         except Exception as e:
-            logger.error(f"SEND ERROR: {e}")
+
+            logger.error(
+                f"COPY STORAGE ERROR: {e}"
+            )
+
+            await message.answer(
+                "❌ Gagal mengirim salah satu file."
+            )
