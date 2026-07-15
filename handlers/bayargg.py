@@ -179,58 +179,201 @@ async def bayargg_webhook(request: Request):
             return {"success": True}
 
         # =================================
-        # VIP PAYMENT
+        # VIP / VVIP PAYMENT
         # =================================
+
         trx = await pool.fetchrow(
-            "SELECT * FROM payments WHERE invoice_id=$1",
+            """
+            SELECT *
+            FROM payments
+            WHERE invoice_id=$1
+            """,
             invoice_id
         )
+
 
         if not trx:
             return {"success": False}
 
-        paket = VIP_PACKAGES.get(trx["code"])
+
+
+        paket = VIP_PACKAGES.get(
+            trx["code"]
+        )
+
+
         if not paket:
             return {"success": False}
 
-        user = await pool.fetchrow(
-            "SELECT vip_until FROM users WHERE telegram_id=$1",
-            trx["user_id"]
+
+
+        paket_type = paket.get(
+            "type",
+            "vip"
         )
+
 
         now = datetime.now(timezone.utc)
 
-        if user and user["vip_until"] and user["vip_until"] > now:
-            vip_until = user["vip_until"] + timedelta(days=paket["days"])
+
+
+        user = await pool.fetchrow(
+            """
+            SELECT
+                vip_until,
+                vvip_expired
+            FROM users
+            WHERE id=$1
+            """,
+            trx["user_id"]
+        )
+
+
+
+        # =========================
+        # HITUNG MASA AKTIF
+        # =========================
+
+        if paket_type == "vvip":
+
+            if (
+                user
+                and user["vvip_expired"]
+                and user["vvip_expired"] > now
+            ):
+                expired = (
+                    user["vvip_expired"]
+                    +
+                    timedelta(
+                        days=paket["days"]
+                    )
+                )
+
+            else:
+
+                expired = (
+                    now
+                    +
+                    timedelta(
+                        days=paket["days"]
+                    )
+                )
+
+
         else:
-            vip_until = now + timedelta(days=paket["days"])
+
+            if (
+                user
+                and user["vip_until"]
+                and user["vip_until"] > now
+            ):
+
+                expired = (
+                    user["vip_until"]
+                    +
+                    timedelta(
+                        days=paket["days"]
+                    )
+                )
+
+            else:
+
+                expired = (
+                    now
+                    +
+                    timedelta(
+                        days=paket["days"]
+                    )
+                )
+
+
 
         async with pool.acquire() as conn:
+
             async with conn.transaction():
 
-                await conn.execute(
-                    "UPDATE payments SET status='paid' WHERE invoice_id=$1",
-                    invoice_id
-                )
+
+                # update pembayaran
 
                 await conn.execute(
                     """
-                    UPDATE users
-                    SET vip=TRUE,
-                        vip_started_at=NOW(),
-                        vip_until=$1
-                    WHERE telegram_id=$2
+                    UPDATE payments
+                    SET status='paid'
+                    WHERE invoice_id=$1
                     """,
-                    vip_until,
-                    trx["user_id"]
+                    invoice_id
                 )
 
-        await bot.send_message(
-            trx["user_id"],
-            f"🎉 VIP aktif sampai {vip_until:%d-%m-%Y %H:%M}"
-        )
+
+
+                # =========================
+                # VVIP
+                # =========================
+
+                if paket_type == "vvip":
+
+                    await conn.execute(
+                        """
+                        UPDATE users
+                        SET
+                            is_vvip=TRUE,
+                            vvip_expired=$1,
+                            vip=TRUE,
+                            vip_until=$1
+                        WHERE id=$2
+                        """,
+                        expired,
+                        trx["user_id"]
+                    )
+
+
+                # =========================
+                # VIP
+                # =========================
+
+                else:
+
+                    await conn.execute(
+                        """
+                        UPDATE users
+                        SET
+                            vip=TRUE,
+                            vip_until=$1
+                        WHERE id=$2
+                        """,
+                        expired,
+                        trx["user_id"]
+                    )
+
+
+
+        if paket_type == "vvip":
+
+            await bot.send_message(
+                trx["user_id"],
+                (
+                    "💎 <b>VVIP AKTIF</b>\n\n"
+                    "✅ Bisa upload file\n"
+                    "✅ Akses premium\n"
+                    f"⏳ Aktif sampai {expired:%d-%m-%Y %H:%M}"
+                ),
+                parse_mode="HTML"
+            )
+
+
+        else:
+
+            await bot.send_message(
+                trx["user_id"],
+                (
+                    "💠 <b>VIP AKTIF</b>\n\n"
+                    "✅ Akses premium\n"
+                    "❌ Upload belum tersedia\n"
+                    f"⏳ Aktif sampai {expired:%d-%m-%Y %H:%M}"
+                ),
+                parse_mode="HTML"
+            )
+
+
 
         return {"success": True}
-
-    finally:
-        await redis_client.delete(lock_key)
