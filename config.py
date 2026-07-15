@@ -25,7 +25,11 @@ BACKUP_BOT_URL = f"https://t.me/{BACKUP_BOT_USERNAME}"
 # DATABASE
 # =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
-
+STORAGE_CHANNEL_ID = int(
+    os.getenv(
+        "STORAGE_CHANNEL_ID"
+    )
+)
 # =========================
 # PAYMENT
 # =========================
