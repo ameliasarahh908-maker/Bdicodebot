@@ -125,7 +125,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
             [
                 InlineKeyboardButton(
                     text="💎 Upgrade VVIP",
-                    callback_data="vip_vvip"
+                    callback_data="vvip"
                 )
             ]
         ]
