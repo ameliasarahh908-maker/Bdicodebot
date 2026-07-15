@@ -39,28 +39,32 @@ def get_lock(user_id: int):
 # =========================
 # SAFE EDIT
 # =========================
-async def safe_update(bot, chat_id, message_id, text, user_id, reply_markup=None):
+async def safe_update(
+    bot,
+    chat_id,
+    message_id,
+    text,
+    reply_markup=None
+):
     if not message_id:
         return
 
-    async with get_lock(user_id):
-        now = time.time()
-        last = _last_update.get(user_id, 0)
+    try:
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
 
-        if now - last < UPDATE_DELAY:
-            await asyncio.sleep(UPDATE_DELAY - (now - last))
+    except TelegramBadRequest:
+        pass
 
-        try:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=message_id,
-                text=text,
-                reply_markup=reply_markup
-            )
-            _last_update[user_id] = time.time()
-
-        except TelegramBadRequest:
-            pass
+    except Exception as e:
+        logging.error(
+            f"SAFE UPDATE ERROR: {e}"
+        )
 
 
 # =========================
@@ -172,7 +176,9 @@ async def receive_media(message: Message, state: FSMContext):
                 f"❌ Maksimal {MAX_MEDIA} file."
             )
 
+        # =========================
         # GET FILE INFO
+        # =========================
         if message.document:
             file = message.document
             media_type = "document"
@@ -182,7 +188,7 @@ async def receive_media(message: Message, state: FSMContext):
         elif message.video:
             file = message.video
             media_type = "video"
-            file_name = file.file_name
+            file_name = getattr(file, "file_name", None)
             file_size = file.file_size
 
         else:
@@ -191,13 +197,23 @@ async def receive_media(message: Message, state: FSMContext):
             file_name = None
             file_size = getattr(file, "file_size", 0)
 
+
         file_id = file.file_id
 
+
+        # =========================
         # DUPLICATE CHECK
-        if any(x["file_id"] == file_id for x in media):
+        # =========================
+        if any(
+            x["file_id"] == file_id
+            for x in media
+        ):
             return
 
+
+        # =========================
         # SAVE MEDIA
+        # =========================
         media.append({
             "file_id": file_id,
             "type": media_type,
@@ -205,34 +221,49 @@ async def receive_media(message: Message, state: FSMContext):
             "file_size": file_size
         })
 
-        await state.update_data(media=media)
+        await state.update_data(
+            media=media
+        )
 
+
+        # =========================
         # DELETE USER MESSAGE
+        # =========================
         try:
             await message.delete()
-        except:
+        except Exception:
             pass
 
-        # PROGRESS
+
+        # =========================
+        # PROGRESS UI
+        # =========================
         total = len(media)
 
-        percent = int((total / MAX_MEDIA) * 100)
+        percent = int(
+            (total / MAX_MEDIA) * 100
+        )
 
         blocks = min(
             10,
             int((total / MAX_MEDIA) * 10)
         )
 
-        bar = "█" * blocks + "░" * (10 - blocks)
+        bar = (
+            "█" * blocks +
+            "░" * (10 - blocks)
+        )
+
 
         text = (
             "📦 <b>UPLOAD MANAGER</b>\n\n"
             f"📁 Total File : <b>{total}</b>\n"
             f"📊 Progress : [{bar}] {percent}%\n"
             f"📥 Maksimal : {MAX_MEDIA}\n\n"
-            "Jika semua file sudah terkirim,\n"
+            "Jika selesai upload,\n"
             "tekan tombol <b>STOP & SAVE</b>."
         )
+
 
         kb = InlineKeyboardBuilder()
 
@@ -248,9 +279,17 @@ async def receive_media(message: Message, state: FSMContext):
 
         kb.adjust(2)
 
-        progress_id = data.get("progress_msg_id")
 
+        progress_id = data.get(
+            "progress_msg_id"
+        )
+
+
+        # =========================
+        # CREATE / UPDATE PROGRESS
+        # =========================
         if not progress_id:
+
             msg = await message.answer(
                 text,
                 parse_mode="HTML",
@@ -262,12 +301,12 @@ async def receive_media(message: Message, state: FSMContext):
             )
 
         else:
+
             await safe_update(
                 message.bot,
                 message.chat.id,
                 progress_id,
                 text,
-                message.from_user.id,
                 kb.as_markup()
             )
 
