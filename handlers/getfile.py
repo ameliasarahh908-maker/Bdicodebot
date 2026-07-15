@@ -66,14 +66,25 @@ async def receive_code(message: Message, state: FSMContext):
     import time
 
     text = message.text.strip()
+
+    # =========================
+    # AMBIL CODE
+    # =========================
+
     code = None
 
-    m = re.search(r"getFile_([A-Za-z0-9_-]+)", text, re.IGNORECASE)
+    m = re.search(
+        r"getFile_([A-Za-z0-9_-]+)",
+        text,
+        re.IGNORECASE
+    )
 
     if m:
         code = m.group(1)
 
+
     if not code:
+
         m = re.search(
             r"code\s*[:：]\s*([A-Za-z0-9_-]+)",
             text,
@@ -83,11 +94,17 @@ async def receive_code(message: Message, state: FSMContext):
         if m:
             code = m.group(1)
 
+
     if not code:
         code = text
 
 
     pool = await get_pool()
+
+
+    # =========================
+    # GET FILE
+    # =========================
 
     file = await pool.fetchrow(
         """
@@ -101,32 +118,53 @@ async def receive_code(message: Message, state: FSMContext):
 
 
     if not file:
+
         await message.answer(
             "❌ CODE TIDAK DITEMUKAN"
         )
+
         await state.clear()
         return
 
+
+
+    # =========================
+    # EXPIRED CHECK
+    # =========================
 
     expires_at = file["expires_at"]
 
     if expires_at:
 
         if hasattr(expires_at, "timestamp"):
-            expired = expires_at.timestamp() < time.time()
+
+            expired = (
+                expires_at.timestamp()
+                < time.time()
+            )
 
         else:
-            expired = expires_at < int(time.time())
+
+            expired = (
+                expires_at
+                < int(time.time())
+            )
 
 
         if expired:
+
             await message.answer(
                 "❌ File sudah kadaluarsa."
             )
+
             await state.clear()
             return
 
 
+
+    # =========================
+    # VIEW COUNT
+    # =========================
 
     await pool.execute(
         """
@@ -136,6 +174,7 @@ async def receive_code(message: Message, state: FSMContext):
         """,
         code
     )
+
 
 
     media = safe_json(
@@ -155,7 +194,171 @@ async def receive_code(message: Message, state: FSMContext):
 
 
     # =========================
-    # PAYMENT CHECK
+    # CHECK ACCESS
+    # =========================
+
+    is_paid = file["is_paid"] or False
+    price = file["price"] or 0
+
+
+    owner = (
+        message.from_user.id
+        ==
+        file["owner_id"]
+    )
+
+
+    vip = await pool.fetchval(
+        """
+        SELECT 1
+        FROM users
+        WHERE telegram_id=$1
+        AND vip=TRUE
+        AND vip_until > NOW()
+        """,
+        message.from_user.id
+    )
+
+
+    access = await pool.fetchval(
+        """
+        SELECT 1
+        FROM file_purchases
+        WHERE user_id=$1
+        AND file_code=$2
+        AND status='paid'
+        """,
+        message.from_user.id,
+        code
+    )
+
+
+    has_access = bool(
+        owner
+        or vip
+        or access
+    )
+
+
+    # =========================
+    # PAID LOCK
+    # =========================
+
+    if is_paid and not has_access:
+
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
+                        callback_data=f"pay:{code}"
+                    )
+                ]
+            ]
+        )
+
+
+        await message.answer(
+            (
+                "🔒 <b>FILE BERBAYAR</b>\n\n"
+                f"🔑 CODE : <code>{code}</code>\n"
+                f"💰 HARGA : Rp {price:,}\n\n"
+                "Silakan bayar untuk membuka file."
+            ).replace(",", "."),
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+        await state.clear()
+        return
+
+
+
+    # =========================
+    # FREE FILE MENU
+    # =========================
+
+    from handlers.open_menu import open_keyboard
+
+
+    await message.answer(
+        (
+            "✅ <b>FILE DITEMUKAN</b>\n\n"
+            f"📦 Total Media : <b>{len(media)}</b>\n\n"
+            "Pilih metode pengiriman:"
+        ),
+        parse_mode="HTML",
+        reply_markup=open_keyboard(code)
+    )
+
+
+    await state.clear()
+
+# =========================
+# DEEP LINK HANDLER
+# =========================
+async def open_file_by_code(
+    message: Message,
+    code: str
+):
+
+    pool = await get_pool()
+
+    file = await pool.fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE LOWER(code)=LOWER($1)
+        LIMIT 1
+        """,
+        code
+    )
+
+
+    if not file:
+        return await message.answer(
+            "❌ File tidak ditemukan."
+        )
+
+
+    media = safe_json(
+        file["media"]
+    )
+
+
+    if not media:
+        return await message.answer(
+            "❌ File kosong."
+        )
+
+
+    # =========================
+    # EXPIRED CHECK
+    # =========================
+
+    import time
+
+    expires_at = file["expires_at"]
+
+    if expires_at:
+
+        if hasattr(expires_at, "timestamp"):
+            expired = expires_at.timestamp() < time.time()
+
+        else:
+            expired = expires_at < int(time.time())
+
+
+        if expired:
+            return await message.answer(
+                "❌ File sudah kadaluarsa."
+            )
+
+
+    # =========================
+    # ACCESS CHECK
     # =========================
 
     is_paid = file["is_paid"] or False
@@ -198,9 +401,11 @@ async def receive_code(message: Message, state: FSMContext):
     )
 
 
+    # =========================
+    # PAID FILE
+    # =========================
 
     if is_paid and not has_access:
-
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -214,7 +419,7 @@ async def receive_code(message: Message, state: FSMContext):
         )
 
 
-        await message.answer(
+        return await message.answer(
             (
                 "🔒 <b>FILE BERBAYAR</b>\n\n"
                 f"🔑 CODE : <code>{code}</code>\n"
@@ -226,204 +431,19 @@ async def receive_code(message: Message, state: FSMContext):
         )
 
 
-        await state.clear()
-        return
-
-
-
     # =========================
-    # SEND FROM STORAGE CHANNEL
+    # FREE FILE MENU
     # =========================
 
-    await send_storage_media(
-        message,
-        media,
-        code,
-        file
-    )
+    from handlers.open_menu import open_keyboard
 
 
-    await state.clear()
-
-async def send_storage_media(
-    message: Message,
-    media: list,
-    code: str,
-    file
-):
-
-    from config import STORAGE_CHANNEL_ID
-
-
-    share_media = (
-        file["share_media"]
-        if file["share_media"] is not None
-        else True
-    )
-
-
-    protect = not share_media
-
-
-    caption = (
-        "ZyxFidxBot\n\n"
-        f"🔑 CODE : {code}\n"
-        f"📦 FILE : {len(media)}"
-    )
-
-
-    for index, item in enumerate(media):
-
-        try:
-
-            sent = await message.bot.copy_message(
-                chat_id=message.chat.id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=item["message_id"],
-                protect_content=protect
-            )
-
-
-            if index == 0:
-
-                try:
-
-                    await message.bot.edit_message_caption(
-                        chat_id=message.chat.id,
-                        message_id=sent.message_id,
-                        caption=caption
-                    )
-
-                except:
-                    pass
-
-
-        except Exception as e:
-
-            await message.answer(
-                f"❌ MEDIA ERROR:\n{e}"
-            )
-
-            return False
-
-
-    return True
-
-async def open_file_by_code(
-    message: Message,
-    code: str
-):
-    pool = await get_pool()
-
-    file = await pool.fetchrow(
-        """
-        SELECT *
-        FROM files
-        WHERE LOWER(code)=LOWER($1)
-        LIMIT 1
-        """,
-        code
-    )
-
-    if not file:
-        return await message.answer(
-            "❌ File tidak ditemukan."
-        )
-
-
-    media = safe_json(
-        file["media"]
-    )
-
-
-    if not media:
-        return await message.answer(
-            "❌ File kosong."
-        )
-
-
-    import time
-
-    expires_at = file["expires_at"]
-
-    if expires_at:
-
-        if hasattr(expires_at, "timestamp"):
-            expired = expires_at.timestamp() < time.time()
-
-        else:
-            expired = expires_at < int(time.time())
-
-
-        if expired:
-            return await message.answer(
-                "❌ File sudah kadaluarsa."
-            )
-
-
-    is_paid = file["is_paid"] or False
-    price = file["price"] or 0
-
-
-    owner = (
-        message.from_user.id ==
-        file["owner_id"]
-    )
-
-
-    vip = await pool.fetchval(
-        """
-        SELECT 1
-        FROM users
-        WHERE telegram_id=$1
-        AND vip=true
-        AND vip_until > NOW()
-        """,
-        message.from_user.id
-    )
-
-
-    access = await pool.fetchval(
-        """
-        SELECT 1
-        FROM file_purchases
-        WHERE user_id=$1
-        AND file_code=$2
-        AND status='paid'
-        """,
-        message.from_user.id,
-        code
-    )
-
-
-    if is_paid and not (owner or vip or access):
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
-                        callback_data=f"pay:{code}"
-                    )
-                ]
-            ]
-        )
-
-        return await message.answer(
-            (
-                "🔒 <b>FILE BERBAYAR</b>\n\n"
-                f"🔑 CODE : <code>{code}</code>\n"
-                f"💰 HARGA : Rp {price:,}\n\n"
-                "Silakan lakukan pembayaran."
-            ).replace(",", "."),
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-
-
-    return await send_storage_media(
-        message,
-        media,
-        code,
-        file
+    return await message.answer(
+        (
+            "✅ <b>FILE DITEMUKAN</b>\n\n"
+            f"📦 Total Media : <b>{len(media)}</b>\n\n"
+            "Pilih metode pengiriman:"
+        ),
+        parse_mode="HTML",
+        reply_markup=open_keyboard(code)
     )
