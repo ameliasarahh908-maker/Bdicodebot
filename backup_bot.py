@@ -260,53 +260,29 @@ async def send_file(
     )
 
 
-
     # =========================
-    # SEND MEDIA BY FILE_ID
+    # SEND MEDIA FROM STORAGE CHANNEL
     # =========================
 
     for item in media:
 
         try:
 
-            file_id = item.get("file_id")
-            file_type = item.get("type")
+            msg_id = item.get("message_id")
 
 
-            if not file_id:
+            if not msg_id:
+                logger.warning(
+                    f"Tidak ada message_id untuk {item}"
+                )
                 continue
 
 
-            if file_type == "video":
-
-                await backup_bot.send_video(
-                    chat_id=message.chat.id,
-                    video=file_id
-                )
-
-
-            elif file_type == "photo":
-
-                await backup_bot.send_photo(
-                    chat_id=message.chat.id,
-                    photo=file_id
-                )
-
-
-            elif file_type == "document":
-
-                await backup_bot.send_document(
-                    chat_id=message.chat.id,
-                    document=file_id
-                )
-
-
-            elif file_type == "audio":
-
-                await backup_bot.send_audio(
-                    chat_id=message.chat.id,
-                    audio=file_id
-                )
+            await backup_bot.copy_message(
+                chat_id=message.chat.id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=msg_id
+            )
 
 
             await asyncio.sleep(0.3)
@@ -315,5 +291,5 @@ async def send_file(
         except Exception as e:
 
             logger.exception(
-                f"SEND MEDIA ERROR: {e}"
+                f"COPY MEDIA ERROR: {e}"
             )
