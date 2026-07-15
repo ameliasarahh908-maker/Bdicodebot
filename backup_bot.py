@@ -72,31 +72,27 @@ def clean_code(text: str):
 @router.message(CommandStart())
 async def start_handler(message: Message):
 
-    args = message.text.split()
-
+    args = message.text.split(maxsplit=1)
 
     if len(args) < 2:
-
         return await message.answer(
-            "🤖 Backup Bot Aktif\n\n"
-            "Tempel kode file."
+            "🤖 Backup Bot Aktif\n\nTempel kode file."
         )
-
 
     payload = args[1]
 
+    if payload.startswith("getFile_"):
 
-    if "getFile_" in payload:
-
-        code = payload.split(
-            "getFile_"
-        )[-1]
+        code = payload.replace(
+            "getFile_",
+            "",
+            1
+        )
 
         return await send_file(
             message,
             code
         )
-
 
     return await message.answer(
         "❌ Link tidak valid."
@@ -110,8 +106,29 @@ async def start_handler(message: Message):
 @router.message(F.text)
 async def code_handler(message: Message):
 
-    text = clean_code(
-        message.text
+    raw = message.text.strip()
+
+    if not raw:
+        return
+
+
+    # =========================
+    # AMBIL CODE DARI LINK
+    # =========================
+    if "getFile_" in raw:
+        text = raw.split("getFile_")[-1]
+
+    else:
+        text = raw
+
+
+    # =========================
+    # CLEAN CODE
+    # =========================
+    text = re.sub(
+        r"[^a-zA-Z0-9]",
+        "",
+        text
     )
 
 
@@ -123,20 +140,31 @@ async def code_handler(message: Message):
 
 
     # =========================
-    # CARI CODE FLEXIBLE
+    # CARI EXACT CODE
     # =========================
     row = await pool.fetchrow(
         """
         SELECT code
         FROM files
-        WHERE
-            LOWER(code)=LOWER($1)
-            OR LOWER(code) LIKE '%' || LOWER($1)
-            OR LOWER($1) LIKE '%' || LOWER(code)
+        WHERE LOWER(code)=LOWER($1)
         LIMIT 1
         """,
         text
     )
+
+
+    if not row:
+
+        # fallback kalau ada typo kecil
+        row = await pool.fetchrow(
+            """
+            SELECT code
+            FROM files
+            WHERE LOWER(code) LIKE LOWER($1)
+            LIMIT 1
+            """,
+            f"%{text}%"
+        )
 
 
     if row:
@@ -148,11 +176,11 @@ async def code_handler(message: Message):
 
 
     # =========================
-    # BUKAN CODE
+    # TIDAK DITEMUKAN
     # =========================
     await message.answer(
-        "🤖 Gunakan Bot Utama untuk upload, akun, dan fitur lainnya.\n\n"
-        f"➡️ {BOT_URL}"
+        "❌ <b>File tidak ditemukan.</b>\n\n"
+        "Pastikan kode benar atau gunakan link asli."
     )
 
 
