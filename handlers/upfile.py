@@ -541,191 +541,185 @@ async def input_price(message: Message, state: FSMContext):
 # =========================
 async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
-        data = await state.get_data()
+    data = await state.get_data()
 
-        if data.get("saving"):
-            return
+    if data.get("saving"):
+        return
 
-        await state.update_data(saving=True)
+    await state.update_data(saving=True)
 
-        media = data.get("media", [])
+    media = data.get("media", [])
 
-        if not media:
-            return await message.answer("❌ No media found")
+    if not media:
+        return await message.answer("❌ No media found")
 
-        # =========================
-        # BASIC INFO
-        # =========================
-        title = data.get("title") or "Untitled File"
-        creator = message.from_user.full_name
+    # =========================
+    # BASIC INFO
+    # =========================
+    title = data.get("title") or "Untitled File"
+    creator = message.from_user.full_name
 
-        # =========================
-        # SETTINGS
-        # =========================
-        share_media = data.get("share_media", True)
+    # =========================
+    # SETTINGS
+    # =========================
+    share_media = data.get("share_media", True)
 
-        is_paid = data.get("is_paid", False)
-        price = data.get("price", 0)
-        payment_provider = data.get("payment_provider")
+    is_paid = data.get("is_paid", False)
+    price = data.get("price", 0)
+    payment_provider = data.get("payment_provider")
 
-        pool = await get_pool()
+    pool = await get_pool()
 
+    # =========================
+    # AUTO REGISTER USER
+    # =========================
+    await pool.execute(
+        """
+        INSERT INTO users
+        (
+            id,
+            username,
+            full_name
+        )
+        VALUES
+        ($1,$2,$3)
 
-        # =========================
-        # AUTO REGISTER USER
-        # =========================
-        await pool.execute(
-            """
-            INSERT INTO users
-            (
-                id,
-                username,
-                full_name
+        ON CONFLICT (id)
+        DO UPDATE SET
+            username = EXCLUDED.username,
+            full_name = EXCLUDED.full_name
+        """,
+        user_id,
+        message.from_user.username,
+        message.from_user.full_name
+    )
+
+    # =========================
+    # GENERATE UNIQUE CODE
+    # =========================
+    while True:
+
+        code = "zyxfidxbot" + "".join(
+            random.choices(
+                string.ascii_uppercase + string.digits,
+                k=10
             )
-            VALUES
-            ($1,$2,$3)
-
-            ON CONFLICT (id)
-            DO UPDATE SET
-                username = EXCLUDED.username,
-                full_name = EXCLUDED.full_name
-            """,
-            user_id,
-            message.from_user.username,
-            message.from_user.full_name
         )
 
-
-        # =========================
-        # GENERATE UNIQUE CODE
-        # =========================
-        while True:
-
-            code = "zyxfidxbot" + "".join(
-                random.choices(
-                    string.ascii_uppercase + string.digits,
-                    k=10
-                )
-            )
-
-            exists = await pool.fetchval(
-                "SELECT 1 FROM files WHERE code=$1",
-                code
-            )
-
-            if not exists:
-                break
-
-
-        # =========================
-        # BACKUP BOT LINK
-        # =========================
-        share_link = (
-            f"{BACKUP_BOT_URL}"
-            f"?start=getFile_{code}"
+        exists = await pool.fetchval(
+            "SELECT 1 FROM files WHERE code=$1",
+            code
         )
 
+        if not exists:
+            break
 
-        # =========================
-        # SAVE FILE
-        # =========================
-        await pool.execute(
-            """
-            INSERT INTO files
-            (
-                code,
-                title,
-                creator,
-                media,
-                share_media,
-                is_share,
-                owner_id,
-                seller_id,
-                media_count,
-                expires_at,
-                is_paid,
-                price,
-                payment_provider,
-                view_count,
-                download_count,
-                favorite_count
-            )
+    # =========================
+    # 🔥 LINK UTAMA & BACKUP
+    # =========================
+    main_link = f"https://t.me/{BOT_USERNAME}?start=getFile_{code}"
+    backup_link = f"https://t.me/{BACKUP_BOT_USERNAME}?start=getFile_{code}"
 
-            VALUES
-            (
-                $1,$2,$3,$4,$5,$6,
-                $7,$8,$9,NULL,
-                $10,$11,$12,
-                $13,$14,$15
-            )
-            """,
-
+    # =========================
+    # SAVE FILE
+    # =========================
+    await pool.execute(
+        """
+        INSERT INTO files
+        (
             code,
             title,
             creator,
-            json.dumps(media),
-
+            media,
             share_media,
-            share_media,
-
-            user_id,
-            user_id,
-
-            len(media),
-
+            is_share,
+            owner_id,
+            seller_id,
+            media_count,
+            expires_at,
             is_paid,
             price,
             payment_provider,
-
-            0,
-            0,
-            0
+            view_count,
+            download_count,
+            favorite_count
         )
 
-
-        await state.clear()
-
-
-        # =========================
-        # RESPONSE
-        # =========================
-        media_mode = (
-            f"💰 Media Mode : Paid (Rp {price:,})"
-            .replace(",", ".")
-            if is_paid
-            else
-            "🆓 Media Mode : Free"
+        VALUES
+        (
+            $1,$2,$3,$4,$5,$6,
+            $7,$8,$9,NULL,
+            $10,$11,$12,
+            $13,$14,$15
         )
+        """,
 
+        code,
+        title,
+        creator,
+        json.dumps(media),
 
-        text = (
-            "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
-            f"📋 Files : {len(media)}\n"
-            f"🔑 Code : <code>{code}</code>\n"
-            f"{media_mode}\n\n"
-            f"🔗 Link : {share_link}"
-        )
+        share_media,
+        share_media,
 
+        user_id,
+        user_id,
 
-        await message.answer(
-            text,
+        len(media),
+
+        is_paid,
+        price,
+        payment_provider,
+
+        0,
+        0,
+        0
+    )
+
+    await state.clear()
+
+    # =========================
+    # RESPONSE
+    # =========================
+    media_mode = (
+        f"💰 Media Mode : Paid (Rp {price:,})".replace(",", ".")
+        if is_paid
+        else "🆓 Media Mode : Free"
+    )
+
+    text = (
+        "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
+        f"📋 Files : {len(media)}\n"
+        f"🔑 Code : <code>{code}</code>\n"
+        f"{media_mode}\n\n"
+        f"🚀 <a href='{backup_link}'>Backup (backup)</a>\n\n"
+        f"🔗 Link : {main_link}"
+    )
+
+    # =========================
+    # 🔥 BUTTON BACKUP
+    # =========================
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚀 BACKUP", url=backup_link)
+
+    await message.answer(
+        text,
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+
+    # =========================
+    # LOG CHANNEL
+    # =========================
+    try:
+
+        me = await message.bot.get_me()
+
+        await message.bot.send_message(
+            CHANNEL_ID,
+            text + f"\n\n🤖 Upload Bot : @{me.username}",
             parse_mode="HTML"
         )
 
-
-        # =========================
-        # LOG CHANNEL
-        # =========================
-        try:
-
-            me = await message.bot.get_me()
-
-            await message.bot.send_message(
-                CHANNEL_ID,
-                text +
-                f"\n\n🤖 Upload Bot : @{me.username}",
-                parse_mode="HTML"
-            )
-
-        except Exception:
-            pass
+    except Exception:
+        pass
