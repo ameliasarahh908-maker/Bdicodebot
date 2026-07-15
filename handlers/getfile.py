@@ -241,3 +241,123 @@ async def receive_code(message: Message, state: FSMContext):
         await message.answer(f"❌ MEDIA ERROR:\n{e}")
 
     await state.clear()
+
+# =========================
+# DEEP LINK HANDLER
+# =========================
+async def open_file_by_code(
+    message: Message,
+    code: str
+):
+    """
+    Dipanggil dari deep link:
+    t.me/BOT?start=getFile_CODE
+    """
+
+    pool = await get_pool()
+
+    file = await pool.fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE LOWER(code)=LOWER($1)
+        LIMIT 1
+        """,
+        code
+    )
+
+
+    if not file:
+        return await message.answer(
+            "❌ File tidak ditemukan."
+        )
+
+
+    # jalankan logic yang sama seperti receive_code
+    media = safe_json(file["media"])
+
+
+    if not media:
+        return await message.answer(
+            "❌ File kosong."
+        )
+
+
+    # cek expired
+    import time
+
+    expires_at = file["expires_at"]
+
+    if expires_at and expires_at < int(time.time()):
+        return await message.answer(
+            "❌ File sudah kadaluarsa."
+        )
+
+
+    # cek akses
+    is_paid = file["is_paid"] or False
+    price = file["price"] or 0
+
+
+    owner = (
+        message.from_user.id ==
+        file["owner_id"]
+    )
+
+
+    vip = await pool.fetchval(
+        """
+        SELECT 1
+        FROM users
+        WHERE telegram_id=$1
+        AND vip=true
+        AND vip_until > NOW()
+        """,
+        message.from_user.id
+    )
+
+
+    access = await pool.fetchval(
+        """
+        SELECT 1
+        FROM file_purchases
+        WHERE user_id=$1
+        AND file_code=$2
+        AND status='paid'
+        """,
+        message.from_user.id,
+        code
+    )
+
+
+    if is_paid and not (owner or vip or access):
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
+                        callback_data=f"pay:{code}"
+                    )
+                ]
+            ]
+        )
+
+        return await message.answer(
+            f"🔒 FILE BERBAYAR\n\n"
+            f"🔑 CODE: {code}\n"
+            f"💰 Harga: Rp {price:,}".replace(",", "."),
+            reply_markup=keyboard
+        )
+
+
+    # buka halaman file
+    from handlers.page import send_page
+
+    return await send_page(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        code=file["code"],
+        page=1
+    )
