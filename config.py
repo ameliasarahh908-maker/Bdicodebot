@@ -16,8 +16,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 BOT_USERNAME = "ZyxFidxBot"
 BOT_URL = f"https://t.me/{BOT_USERNAME}"
 
-BACKUP_BOT_USERNAME = "Zyxfidzbot"
-BACKUP_BOT_URL = f"https://t.me/{BACKUP_BOT_USERNAME}"
 # =========================
 # DATABASE
 # =========================
