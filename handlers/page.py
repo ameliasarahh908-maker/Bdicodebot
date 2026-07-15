@@ -312,8 +312,8 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         else:
 
             await bot.send_media_group(
-                chat_id,
-                album,
+                chat_id=chat_id,
+                media=album,
                 protect_content=protect
             )
 
