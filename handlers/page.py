@@ -190,7 +190,12 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         f"📊 TOTAL : {len(media)} FILE"
     )
 
-    protect = not file["share_media"]
+    share_media = file["share_media"]
+
+    if share_media is None:
+        share_media = True
+
+    protect = not share_media
 
 
     album = []
@@ -203,7 +208,9 @@ async def send_page(bot, chat_id, user_id, code, page=1):
             continue
 
 
-        fid = item.get("file_id")
+        fid = clean_file_id(
+            item.get("file_id")
+        )
 
         ftype = (
             item.get("type")
@@ -318,30 +325,29 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-
-                build_page_buttons(
-                    code,
-                    page,
-                    total_page
-                ),
-
-                [
-
-                    InlineKeyboardButton(
-                        text="📢 Channel Update",
-                        url="https://t.me/+F6-XB1gFA9VhMDc1"
-                    ),
-
-                    InlineKeyboardButton(
-                        text="🔔 Notifikasi Code",
-                        url="https://t.me/+T8c4gdEWf843ZWQ1"
-                    )
-
-                ]
-
-            ]
-        )
-
+             build_page_buttons(
+                 code,
+                 page,
+                 total_page
+             ),
+             [
+                 InlineKeyboardButton(
+                     text="📤 OPEN ALL",
+                     callback_data=f"all:{code}"
+                 )
+             ],
+             [
+                 InlineKeyboardButton(
+                     text="📢 Channel Update",
+                     url="https://t.me/+F6-XB1gFA9VhMDc1"
+                 ),
+                 InlineKeyboardButton(
+                     text="🔔 Notifikasi Code",
+                     url="https://t.me/+T8c4gdEWf843ZWQ1"
+                 )
+             ]
+         ]
+     )
 
         nav_msg = await bot.send_message(
             chat_id,
