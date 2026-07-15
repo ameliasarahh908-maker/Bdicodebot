@@ -12,6 +12,7 @@ from database import get_pool, close_db
 
 # routers
 from handlers.bayargg import router as bayargg_router
+from handlers.start import router as start_router   # ⬅️ TAMBAH INI
 
 # workers
 from tasks.auto_delete import auto_delete_worker
@@ -34,28 +35,20 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
-# =========================
-# GLOBAL TASKS
-# =========================
 tasks = {}
 
-
 # =========================
-# SAFE CREATE TASK
+# TASK MANAGER
 # =========================
 def create_task(name, coro):
     if name in tasks and not tasks[name].done():
-        logging.warning(f"⚠️ {name} already running")
+        logging.warning(f"{name} already running")
         return
 
-    task = asyncio.create_task(coro)
-    tasks[name] = task
-    logging.info(f"✅ {name} started")
+    tasks[name] = asyncio.create_task(coro)
+    logging.info(f"{name} started")
 
 
-# =========================
-# SAFE STOP TASK
-# =========================
 async def stop_task(name):
     task = tasks.get(name)
     if task:
@@ -63,7 +56,7 @@ async def stop_task(name):
         try:
             await task
         except asyncio.CancelledError:
-            logging.info(f"❌ {name} stopped")
+            logging.info(f"{name} stopped")
 
 
 # =========================
@@ -74,40 +67,35 @@ async def start_workers():
     create_task("PAYMENT", payment_worker())
     create_task("VIP_EXPIRED", vip_expired_worker())
 
-    # polling bot
     create_task(
         "POLLING",
-        dp.start_polling(
-            bot,
-            allowed_updates=dp.resolve_used_update_types(),
-        )
+        dp.start_polling(bot)
     )
+
 
 # =========================
 # FASTAPI LIFESPAN
 # =========================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logging.info("🚀 APP STARTING...")
+    logging.info("APP STARTING")
 
-    # init DB
     await get_pool()
-
-    # reset webhook
     await bot.delete_webhook(drop_pending_updates=True)
 
     me = await bot.get_me()
-    logging.info(f"🤖 Logged in as @{me.username}")
+    logging.info(f"Bot: @{me.username}")
 
-    # start all workers
+    # include routers
+    dp.include_router(start_router)
+    dp.include_router(bayargg_router)
+
     await start_workers()
 
     yield
 
-    # =========================
-    # SHUTDOWN
-    # =========================
-    logging.info("🛑 SHUTDOWN...")
+    # shutdown
+    logging.info("SHUTDOWN")
 
     for name in list(tasks.keys()):
         await stop_task(name)
@@ -115,20 +103,15 @@ async def lifespan(app: FastAPI):
     await close_db()
     await bot.session.close()
 
-    logging.info("✅ APP STOPPED")
+    logging.info("STOPPED")
 
 
 # =========================
-# APP INIT
+# APP
 # =========================
 app = FastAPI(lifespan=lifespan)
 
-app.include_router(bayargg_router)
 
-
-# =========================
-# ROUTES
-# =========================
 @app.get("/")
 async def root():
     return {"status": "running"}
