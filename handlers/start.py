@@ -12,12 +12,16 @@ from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
 from database import get_pool
+from handlers.page import send_page
 
 from datetime import datetime
 
 router = Router()
 
 
+# =========================
+# START
+# =========================
 # =========================
 # START
 # =========================
@@ -33,33 +37,37 @@ async def start_cmd(message: Message, state: FSMContext):
     # =========================
     # DEEP LINK FILE
     # =========================
+
     args = message.text.split(maxsplit=1)
 
     if len(args) > 1:
 
-        payload = args[1]
+        payload = args[1].strip()
 
 
         if payload.startswith("getFile_"):
 
             code = payload.replace(
                 "getFile_",
-                ""
-            )
+                "",
+                1
+            ).strip()
 
 
-            # arahkan ke handler get file
-            from handlers.getfile import open_file_by_code
+            if code:
 
-            return await open_file_by_code(
-                message,
-                code
-            )
+                from handlers.getfile import open_file_by_code
+
+                return await open_file_by_code(
+                    message,
+                    code
+                )
 
 
     # =========================
     # NORMAL START
     # =========================
+
     loading = await message.answer(
         "⚡ Loading..."
     )
@@ -81,9 +89,14 @@ async def start_cmd(message: Message, state: FSMContext):
             f"START ERROR: {e}"
         )
 
-        await loading.edit_text(
-            "❌ SYSTEM ERROR"
-        )
+
+        try:
+            await loading.edit_text(
+                "❌ SYSTEM ERROR"
+            )
+
+        except:
+            pass
 
 
 # =========================
