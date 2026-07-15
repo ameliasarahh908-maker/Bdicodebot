@@ -3,6 +3,7 @@ import json
 import random
 import string
 import time
+import logging
 from typing import Dict
 
 from aiogram import Router, F
@@ -29,25 +30,33 @@ UPDATE_DELAY = 0.3
 _last_update: Dict[int, float] = {}
 _user_locks: Dict[int, asyncio.Lock] = {}
 
-
 def get_lock(user_id: int):
     if user_id not in _user_locks:
         _user_locks[user_id] = asyncio.Lock()
     return _user_locks[user_id]
 
 
+# ✅ TAMBAH DI SINI
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def user_lock(user_id: int):
+    lock = get_lock(user_id)
+    async with lock:
+        yield
+
 # =========================
 # SAFE EDIT
 # =========================
-async def safe_update(
-    bot,
-    chat_id,
-    message_id,
-    text,
-    reply_markup=None
-):
-    if not message_id:
+async def safe_update(bot, chat_id, message_id, text, reply_markup=None):
+
+    now = time.time()
+    last = _last_update.get(chat_id, 0)
+
+    if now - last < UPDATE_DELAY:
         return
+
+    _last_update[chat_id] = now
 
     try:
         await bot.edit_message_text(
@@ -62,9 +71,7 @@ async def safe_update(
         pass
 
     except Exception as e:
-        logging.error(
-            f"SAFE UPDATE ERROR: {e}"
-        )
+        logging.error(f"SAFE UPDATE ERROR: {e}")
 
 
 # =========================
@@ -83,7 +90,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    async with get_lock(call.from_user.id):
+    async with user_lock(call.from_user.id):
 
         await state.clear()
         await state.set_state(UploadState.upload)
@@ -162,7 +169,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 @router.message(F.document | F.video | F.photo)
 async def receive_media(message: Message, state: FSMContext):
 
-    async with get_lock(message.from_user.id):
+    async with user_lock(message.from_user.id):
 
         data = await state.get_data()
 
@@ -172,12 +179,10 @@ async def receive_media(message: Message, state: FSMContext):
         media = data.get("media", [])
 
         if len(media) >= MAX_MEDIA:
-            return await message.answer(
-                f"❌ Maksimal {MAX_MEDIA} file."
-            )
+            return await message.answer(f"❌ Maksimal {MAX_MEDIA} file.")
 
         # =========================
-        # GET FILE INFO
+        # GET FILE
         # =========================
         if message.document:
             file = message.document
@@ -200,31 +205,47 @@ async def receive_media(message: Message, state: FSMContext):
         file_id = file.file_id
 
         # =========================
-        # DUPLICATE CHECK
+        # DUPLICATE
         # =========================
         if any(x["file_id"] == file_id for x in media):
             return
 
         # =========================
-        # SAVE MEDIA (ANTI BUG)
+        # SAVE
         # =========================
-        new_media = list(media)
-
-        new_media.append({
+        media.append({
             "file_id": file_id,
             "type": media_type,
             "file_name": file_name,
             "file_size": file_size
         })
 
-        await state.update_data(media=new_media)
-
-        # ambil ulang biar sinkron
-        data = await state.get_data()
-        media = data.get("media", [])
+        await state.update_data(media=media)
 
         # =========================
-        # BUILD UI
+        # AUTO DELETE MEDIA
+        # =========================
+        try:
+            await message.delete()
+        except:
+            pass
+
+        # =========================
+        # NOTIFIKASI MASUK
+        # =========================
+        notif = await message.answer(
+            f"✅ File diterima ({len(media)}/{MAX_MEDIA})"
+        )
+
+        # auto hapus notif biar bersih
+        await asyncio.sleep(1.5)
+        try:
+            await notif.delete()
+        except:
+            pass
+
+        # =========================
+        # UPDATE PROGRESS
         # =========================
         text = (
             "📦 <b>UPLOAD MODE</b>\n\n"
@@ -234,33 +255,26 @@ async def receive_media(message: Message, state: FSMContext):
 
         kb = InlineKeyboardBuilder()
         kb.button(text="⏹ STOP & SAVE", callback_data="save_upfile")
-        kb.button(text="❌ CANCEL", callback_data="cancel_upfile")
+        kb.button(text="❌ BATAL", callback_data="cancel_upfile")
         kb.adjust(1)
 
-        # =========================
-        # DELETE PROGRESS LAMA
-        # =========================
         old_id = data.get("progress_msg_id")
 
         if old_id:
-            try:
-                await message.bot.delete_message(
-                    chat_id=message.chat.id,
-                    message_id=old_id
-                )
-            except:
-                pass
-
-        # =========================
-        # SEND PROGRESS BARU
-        # =========================
-        sent = await message.answer(
-            text,
-            reply_markup=kb.as_markup(),
-            parse_mode="HTML"
-        )
-
-        await state.update_data(progress_msg_id=sent.message_id)
+            await safe_update(
+                message.bot,
+                message.chat.id,
+                old_id,
+                text,
+                kb.as_markup()
+            )
+        else:
+            sent = await message.answer(
+                text,
+                reply_markup=kb.as_markup(),
+                parse_mode="HTML"
+            )
+            await state.update_data(progress_msg_id=sent.message_id)
 
 
 # =========================
@@ -271,7 +285,7 @@ async def cancel(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    async with get_lock(call.from_user.id):
+    async with user_lock(call.from_user.id):
 
         data = await state.get_data()
         msg_id = data.get("progress_msg_id")
@@ -303,25 +317,35 @@ async def choose_share(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    async with get_lock(call.from_user.id):
+    async with user_lock(call.from_user.id):
 
         data = await state.get_data()
 
-        # reset flag biar gak ke-lock
-        await state.update_data(saving=False)
-
+        # =========================
+        # 🔥 ANTI DOUBLE CLICK
+        # =========================
         if data.get("saving"):
             return await call.answer(
                 "Sedang diproses...",
                 show_alert=True
             )
 
+        # aktifkan lock
+        await state.update_data(saving=True)
+
+        # =========================
+        # VALIDASI MEDIA
+        # =========================
         if not data.get("media"):
+            await state.update_data(saving=False)
             return await call.answer(
                 "Belum ada file.",
                 show_alert=True
             )
 
+        # =========================
+        # UI PILIH MODE
+        # =========================
         kb = InlineKeyboardBuilder()
 
         kb.button(
@@ -344,31 +368,71 @@ async def choose_share(call: CallbackQuery, state: FSMContext):
             reply_markup=kb.as_markup()
         )
 
+        # =========================
+        # ❗ BUKA LOCK LAGI
+        # =========================
+        await state.update_data(saving=False)
+
 # =========================
 # INPUT TITLE
 # =========================
+import re
+
+BAD_WORDS = ["bocil", "child", "underage"]
+
+# =========================
+# NORMALIZE (ANTI AKALIN)
+# =========================
+def normalize(text: str) -> str:
+    return re.sub(r'[^a-z0-9]', '', text.lower())
+
+# =========================
+# CHECK BAD WORD
+# =========================
+def is_bad(text: str) -> bool:
+    clean = normalize(text)
+    return any(word in clean for word in BAD_WORDS)
+
+
 @router.message(UploadState.wait_title)
 async def input_title(message: Message, state: FSMContext):
 
-    async with get_lock(message.from_user.id):
+    async with user_lock(message.from_user.id):
 
         title = (message.text or "").strip()
 
-        # skip dulu baru validasi
+        # =========================
+        # SKIP
+        # =========================
         if title.lower() == "/skip":
             title = "Untitled"
 
+        # =========================
+        # VALIDASI PANJANG
+        # =========================
         elif len(title) < 3:
             return await message.answer("❌ Judul minimal 3 karakter.")
 
+        # =========================
+        # FILTER KONTEN TERLARANG 🔥
+        # =========================
+        if is_bad(title):
+            return await message.answer(
+                "❌ Judul mengandung kata terlarang.\n"
+                "Silakan gunakan judul lain."
+            )
+
+        # =========================
+        # SAVE
+        # =========================
         await state.update_data(title=title)
 
-        # lanjut ke pilih tipe
+        # =========================
+        # LANJUT PILIH TIPE
+        # =========================
         kb = InlineKeyboardBuilder()
-
         kb.button(text="🆓 Free", callback_data="file_free")
         kb.button(text="💰 Paid", callback_data="file_paid")
-
         kb.adjust(2)
 
         await message.answer(
@@ -383,7 +447,7 @@ async def handle_share(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    async with get_lock(call.from_user.id):
+    async with user_lock(call.from_user.id):
 
         share_media = call.data == "share_yes"
 
@@ -431,15 +495,17 @@ async def file_free(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    await state.update_data(
-        is_paid=False,
-        price=0,
-        payment_provider=None
-    )
+    async with user_lock(call.from_user.id):  # ✅ TAMBAH INI
 
-    await call.message.edit_text("⏳ Menyimpan file...")
+        await state.update_data(
+            is_paid=False,
+            price=0,
+            payment_provider=None
+        )
 
-    await finalize_save(call.message, state, call.from_user.id)
+        await call.message.edit_text("⏳ Menyimpan file...")
+
+        await finalize_save(call.message, state, call.from_user.id)
 
 
 # =========================
@@ -448,34 +514,39 @@ async def file_free(call: CallbackQuery, state: FSMContext):
 @router.message(UploadState.wait_price)
 async def input_price(message: Message, state: FSMContext):
 
-    text = (message.text or "").replace(".", "").replace(",", "")
+    async with user_lock(message.from_user.id):  # ✅ TAMBAH INI
 
-    if not text.isdigit():
-        return await message.answer("❌ Harga harus angka.")
+        text = (message.text or "").replace(".", "").replace(",", "")
 
-    price = int(text)
+        if not text.isdigit():
+            return await message.answer("❌ Harga harus angka.")
 
-    if price < 1000:
-        return await message.answer("❌ Minimal Rp1000.")
+        price = int(text)
 
-    await state.update_data(
-        is_paid=True,
-        price=price,
-        payment_provider="bayargg"
-    )
+        if price < 1000:
+            return await message.answer("❌ Minimal Rp1000.")
 
-    await message.answer(f"⏳ Menyimpan file dengan harga Rp{price:,}...")
+        await state.update_data(
+            is_paid=True,
+            price=price,
+            payment_provider="bayargg"
+        )
 
-    await finalize_save(message, state, message.from_user.id)
+        await message.answer(f"⏳ Menyimpan file dengan harga Rp{price:,}...")
+
+        await finalize_save(message, state, message.from_user.id)
     
 # =========================
 # FINAL SAVE
 # =========================
 async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
-    async with get_lock(user_id):
-
         data = await state.get_data()
+
+        if data.get("saving"):
+            return
+
+        await state.update_data(saving=True)
 
         media = data.get("media", [])
 
