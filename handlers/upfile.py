@@ -96,18 +96,82 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    async with user_lock(call.from_user.id):
+    user_id = call.from_user.id
+
+    pool = await get_pool()
+
+
+    # =========================
+    # CEK VVIP
+    # =========================
+    user = await pool.fetchrow(
+        """
+        SELECT
+            is_vvip,
+            vvip_expired
+        FROM users
+        WHERE id=$1
+        """,
+        user_id
+    )
+
+
+    # BELUM ADA DATA
+    if not user:
+        return await call.message.answer(
+            "🔒 Fitur Upload khusus VVIP.\n\n"
+            "Silakan upgrade VVIP terlebih dahulu."
+        )
+
+
+    # =========================
+    # VALIDASI VVIP
+    # =========================
+    if not user["is_vvip"]:
+
+        return await call.message.answer(
+            "🔒 <b>UPLOAD KHUSUS VVIP</b>\n\n"
+            "Fitur upload hanya tersedia untuk member VVIP.\n\n"
+            "💎 Upgrade VVIP untuk membuka fitur ini.",
+            parse_mode="HTML"
+        )
+
+
+    # =========================
+    # CEK EXPIRED
+    # =========================
+    if user["vvip_expired"]:
+
+        from datetime import datetime, timezone
+
+        if user["vvip_expired"] < datetime.now(timezone.utc):
+
+            return await call.message.answer(
+                "⏳ Masa VVIP kamu sudah habis.\n\n"
+                "Silakan perpanjang VVIP."
+            )
+
+
+    # =========================
+    # LOCK
+    # =========================
+    async with user_lock(user_id):
 
         await state.clear()
-        await state.set_state(UploadState.upload)
+
+        await state.set_state(
+            UploadState.upload
+        )
+
 
         # =========================
         # FORCE SUB
         # =========================
         if not await check_force_sub(
             call.bot,
-            call.from_user.id
+            user_id
         ):
+
             return await call.message.answer(
                 "❌ Join channel terlebih dahulu.",
                 reply_markup=join_kb()
@@ -115,7 +179,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
 
         # =========================
-        # DELETE OLD MENU
+        # DELETE MENU
         # =========================
         try:
             await call.message.delete()
@@ -124,14 +188,14 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
 
         # =========================
-        # CREATE UPLOAD MESSAGE
+        # UPLOAD MESSAGE
         # =========================
         msg = await call.message.answer(
             "📦 <b>UPLOAD MODE ACTIVE</b>\n\n"
             "📤 Kirim foto, video atau dokumen.\n"
             "Maksimal <b>200 file</b>.\n\n"
-            "Setelah selesai kirim file,\n"
-            "tombol <b>STOP & SAVE</b> akan muncul.",
+            "Setelah selesai tekan tombol "
+            "<b>STOP & SAVE</b>.",
             parse_mode="HTML"
         )
 
@@ -142,29 +206,22 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
         await state.update_data(
             upload_mode=True,
 
-            # media
             media=[],
 
-            # info
             title=None,
 
-            # share
             share_media=True,
 
-            # payment
             is_paid=False,
             price=0,
             payment_provider=None,
 
-            # counter
             view_count=0,
             download_count=0,
             favorite_count=0,
 
-            # progress
             progress_msg_id=msg.message_id,
 
-            # lock
             saving=False
         )
 
