@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 
@@ -21,17 +20,17 @@ logger = logging.getLogger(__name__)
 
 
 # =========================
-# BOT
+# BOT INSTANCE
 # =========================
-bot = Bot(
+backup_bot = Bot(
     token=BACKUP_BOT_TOKEN
 )
 
-dp = Dispatcher()
+backup_dp = Dispatcher()
 
 router = Router()
 
-dp.include_router(router)
+backup_dp.include_router(router)
 
 
 # =========================
@@ -45,30 +44,25 @@ async def start_handler(message: Message):
     if len(args) < 2:
         return await message.answer(
             "🤖 Backup Bot Aktif\n\n"
-            "Masukkan kode file."
+            "Kirim kode file."
         )
 
-
     payload = args[1]
-
 
     if not payload.startswith("getFile_"):
         return await message.answer(
             "❌ Kode tidak valid."
         )
 
-
     code = payload.replace(
         "getFile_",
         ""
     )
 
-
     await send_file(
         message,
         code
     )
-
 
 
 # =========================
@@ -87,9 +81,8 @@ async def code_handler(message: Message):
     )
 
 
-
 # =========================
-# SEND MEDIA
+# SEND FILE
 # =========================
 async def send_file(
     message: Message,
@@ -97,7 +90,6 @@ async def send_file(
 ):
 
     pool = await get_pool()
-
 
     row = await pool.fetchrow(
         """
@@ -119,18 +111,17 @@ async def send_file(
         )
 
 
-    media = json.loads(
-        row["media"]
-    )
-
-
     if row["is_paid"]:
-
         return await message.answer(
-            "🔒 File ini berbayar.\n"
+            "🔒 File berbayar.\n"
             f"Harga: Rp {row['price']:,}"
             .replace(",", ".")
         )
+
+
+    media = json.loads(
+        row["media"]
+    )
 
 
     await message.answer(
@@ -172,25 +163,5 @@ async def send_file(
         except Exception as e:
 
             logger.error(
-                f"SEND ERROR {e}"
+                f"SEND ERROR: {e}"
             )
-
-
-# =========================
-# MAIN
-# =========================
-async def main():
-
-    logger.info(
-        "BACKUP BOT STARTED"
-    )
-
-
-    await dp.start_polling(
-        bot
-    )
-
-
-if __name__ == "__main__":
-
-    asyncio.run(main())
