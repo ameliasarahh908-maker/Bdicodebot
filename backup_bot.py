@@ -9,7 +9,8 @@ from aiogram.client.default import DefaultBotProperties
 
 from config import (
     BACKUP_BOT_TOKEN,
-    STORAGE_CHANNEL_ID
+    STORAGE_CHANNEL_ID,
+    BOT_URL
 )
 
 from database import get_pool
@@ -51,11 +52,12 @@ async def start_handler(message: Message):
     args = message.text.split()
 
 
+    # /start biasa
     if len(args) < 2:
 
         return await message.answer(
             "🤖 Backup Bot Aktif\n\n"
-            "Kirim kode file."
+            "Kirim kode file atau gunakan bot utama."
         )
 
 
@@ -79,28 +81,53 @@ async def start_handler(message: Message):
         "❌ Kode tidak valid."
     )
 
-
-
 # =========================
-# MANUAL CODE
+# MANUAL CODE / REDIRECT
 # =========================
 @router.message(F.text)
 async def code_handler(message: Message):
 
-    code = message.text.strip()
+    text = message.text.strip()
 
 
-    if code.startswith("/"):
-
+    if text.startswith("/"):
         return
 
 
-    await send_file(
-        message,
-        code
+    # =========================
+    # COBA CARI CODE
+    # =========================
+    pool = await get_pool()
+
+
+    row = await pool.fetchrow(
+        """
+        SELECT code
+        FROM files
+        WHERE LOWER(code)=LOWER($1)
+        OR LOWER(code) LIKE '%' || LOWER($1)
+        LIMIT 1
+        """,
+        text
     )
 
 
+    if row:
+
+        return await send_file(
+            message,
+            row["code"]
+        )
+
+
+    # =========================
+    # BUKAN CODE
+    # ARAHKAN BOT UTAMA
+    # =========================
+    await message.answer(
+        "🤖 Gunakan Bot Utama untuk upload, akun, dan fitur lainnya.\n\n"
+        f"➡️ {BOT_URL}"
+    )
 
 # =========================
 # SEND FILE STORAGE
