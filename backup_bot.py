@@ -261,28 +261,80 @@ async def send_file(
 
 
     # =========================
-    # SEND MEDIA FROM STORAGE CHANNEL
+    # SEND MEDIA
     # =========================
+
+    success = 0
 
     for item in media:
 
         try:
 
             msg_id = item.get("message_id")
+            file_id = item.get("file_id")
+            file_type = (item.get("type") or "document").lower()
 
 
-            if not msg_id:
-                logger.warning(
-                    f"Tidak ada message_id untuk {item}"
+            # =========================
+            # PRIORITAS STORAGE CHANNEL
+            # =========================
+            if msg_id:
+
+                await backup_bot.copy_message(
+                    chat_id=message.chat.id,
+                    from_chat_id=STORAGE_CHANNEL_ID,
+                    message_id=msg_id
                 )
-                continue
+
+                success += 1
 
 
-            await backup_bot.copy_message(
-                chat_id=message.chat.id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id
-            )
+            # =========================
+            # FALLBACK FILE_ID
+            # =========================
+            elif file_id:
+
+
+                if file_type == "video":
+
+                    await backup_bot.send_video(
+                        chat_id=message.chat.id,
+                        video=file_id
+                    )
+
+
+                elif file_type == "photo":
+
+                    await backup_bot.send_photo(
+                        chat_id=message.chat.id,
+                        photo=file_id
+                    )
+
+
+                elif file_type == "audio":
+
+                    await backup_bot.send_audio(
+                        chat_id=message.chat.id,
+                        audio=file_id
+                    )
+
+
+                else:
+
+                    await backup_bot.send_document(
+                        chat_id=message.chat.id,
+                        document=file_id
+                    )
+
+
+                success += 1
+
+
+            else:
+
+                logger.warning(
+                    f"MEDIA INVALID: {item}"
+                )
 
 
             await asyncio.sleep(0.3)
@@ -291,5 +343,12 @@ async def send_file(
         except Exception as e:
 
             logger.exception(
-                f"COPY MEDIA ERROR: {e}"
+                f"SEND MEDIA ERROR: {e}"
             )
+
+
+    if success == 0:
+
+        await message.answer(
+            "❌ Semua file gagal dikirim."
+        )
