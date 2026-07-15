@@ -15,6 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
     CHANNEL_ID,
+    STORAGE_CHANNEL_ID,
     BOT_URL,
     BOT_USERNAME,
     BACKUP_BOT_URL,
@@ -169,7 +170,7 @@ async def start_upfile(call: CallbackQuery, state: FSMContext):
 
 
 # =========================
-# RECEIVE MEDIA (FINAL FIX)
+# RECEIVE MEDIA (STORAGE CHANNEL FIX)
 # =========================
 @router.message(F.document | F.video | F.photo)
 async def receive_media(message: Message, state: FSMContext):
@@ -184,70 +185,123 @@ async def receive_media(message: Message, state: FSMContext):
         media = data.get("media", [])
 
         if len(media) >= MAX_MEDIA:
-            return await message.answer(f"❌ Maksimal {MAX_MEDIA} file.")
+            return await message.answer(
+                f"❌ Maksimal {MAX_MEDIA} file."
+            )
+
 
         # =========================
-        # GET FILE
+        # COPY KE STORAGE CHANNEL
+        # =========================
+        try:
+
+            copy = await message.bot.copy_message(
+                chat_id=STORAGE_CHANNEL_ID,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id
+            )
+
+            storage_message_id = copy.message_id
+
+        except Exception as e:
+
+            logging.error(
+                f"STORAGE COPY ERROR: {e}"
+            )
+
+            return await message.answer(
+                "❌ Gagal menyimpan file."
+            )
+
+
+        # =========================
+        # TYPE INFO
         # =========================
         if message.document:
-            file = message.document
+
             media_type = "document"
-            file_name = file.file_name
-            file_size = file.file_size
+            file_name = message.document.file_name
+            file_size = message.document.file_size
+
 
         elif message.video:
-            file = message.video
+
             media_type = "video"
-            file_name = getattr(file, "file_name", None)
-            file_size = file.file_size
+            file_name = getattr(
+                message.video,
+                "file_name",
+                None
+            )
+            file_size = message.video.file_size
+
 
         else:
-            file = message.photo[-1]
+
             media_type = "photo"
             file_name = None
-            file_size = getattr(file, "file_size", 0)
+            file_size = message.photo[-1].file_size
 
-        file_id = file.file_id
+
 
         # =========================
-        # DUPLICATE
+        # DUPLICATE CHECK
         # =========================
-        if any(x["file_id"] == file_id for x in media):
+        if any(
+            x["message_id"] == storage_message_id
+            for x in media
+        ):
             return
 
+
+
         # =========================
-        # SAVE
+        # SAVE SESSION
         # =========================
         media.append({
-            "file_id": file_id,
+
+            "message_id": storage_message_id,
+
             "type": media_type,
+
             "file_name": file_name,
+
             "file_size": file_size
+
         })
 
-        await state.update_data(media=media)
+
+        await state.update_data(
+            media=media
+        )
+
 
         # =========================
-        # AUTO DELETE MEDIA
+        # DELETE ORIGINAL
         # =========================
         try:
             await message.delete()
         except:
             pass
 
+
+
         # =========================
-        # NOTIFIKASI MASUK
+        # NOTIF
         # =========================
         notif = await message.answer(
             f"✅ File diterima ({len(media)}/{MAX_MEDIA})"
         )
 
-        # auto hapus notif biar bersih
+
         await asyncio.sleep(1.5)
+
+
         try:
             await notif.delete()
         except:
             pass
+
+
 
         # =========================
         # UPDATE PROGRESS
@@ -258,14 +312,30 @@ async def receive_media(message: Message, state: FSMContext):
             "Jika sudah selesai tekan tombol di bawah."
         )
 
+
         kb = InlineKeyboardBuilder()
-        kb.button(text="⏹ STOP & SAVE", callback_data="save_upfile")
-        kb.button(text="❌ BATAL", callback_data="cancel_upfile")
+
+        kb.button(
+            text="⏹ STOP & SAVE",
+            callback_data="save_upfile"
+        )
+
+        kb.button(
+            text="❌ BATAL",
+            callback_data="cancel_upfile"
+        )
+
         kb.adjust(1)
 
-        old_id = data.get("progress_msg_id")
+
+
+        old_id = data.get(
+            "progress_msg_id"
+        )
+
 
         if old_id:
+
             await safe_update(
                 message.bot,
                 message.chat.id,
@@ -273,13 +343,19 @@ async def receive_media(message: Message, state: FSMContext):
                 text,
                 kb.as_markup()
             )
+
+
         else:
+
             sent = await message.answer(
                 text,
                 reply_markup=kb.as_markup(),
                 parse_mode="HTML"
             )
-            await state.update_data(progress_msg_id=sent.message_id)
+
+            await state.update_data(
+                progress_msg_id=sent.message_id
+            )
 
 
 # =========================
