@@ -5,15 +5,14 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-from handlers.page import send_page
+from database import get_pool
 from handlers.sendall import send_all
-
+from handlers.page import send_page
 
 router = Router()
 
 
 def open_keyboard(code):
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -32,20 +31,25 @@ def open_keyboard(code):
     )
 
 
-@router.callback_query(
-    F.data.startswith("openpage:")
-)
+@router.callback_query(F.data.startswith("page:"))
 async def open_page(call: CallbackQuery):
-
-    code = call.data.split(":")[1]
+    try:
+        _, code, page = call.data.split(":")
+        page = int(page)
+    except:
+        return await call.answer(
+            "❌ Data salah",
+            show_alert=True
+        )
 
     await call.answer()
 
     await send_page(
         bot=call.bot,
         chat_id=call.message.chat.id,
+        user_id=call.from_user.id,
         code=code,
-        page=1
+        page=page
     )
 
 
@@ -71,11 +75,11 @@ async def open_all(call: CallbackQuery):
             show_alert=True
         )
 
+    await call.answer()
+
     await send_all(
         bot=call.bot,
         chat_id=call.message.chat.id,
         code=code,
         file=file
     )
-
-    await call.answer()
