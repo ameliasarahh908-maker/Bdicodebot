@@ -70,14 +70,14 @@ async def set_vip(user_id: int, days: int = 30):
 
     expired = int(time.time()) + (days * 86400)
 
-    # 🔥 JANGAN HILANGKAN DATA LAMA
-    data["level"] = "vip"
-    data["expired_at"] = expired
+    # 🔥 JAGA DATA LAMA
+    new_data = {
+        "level": "vip",
+        "expired_at": expired,
+        "paid_quota": data.get("paid_quota", 0)
+    }
 
-    # 🔥 pastikan quota tetap ada
-    data["paid_quota"] = data.get("paid_quota", 0)
-
-    await save_user_data(user_id, data)
+    await save_user_data(user_id, new_data)
 
 
 # =========================
@@ -111,7 +111,9 @@ async def add_quota(user_id: int, amount: int):
 
     data = await get_user_data(user_id)
 
-    data["paid_quota"] = data.get("paid_quota", 0) + amount
+    current = data.get("paid_quota", 0)
+
+    data["paid_quota"] = current + amount
 
     await save_user_data(user_id, data)
 
