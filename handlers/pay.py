@@ -492,7 +492,11 @@ async def check_payment(call: CallbackQuery):
         # 🔥 UPDATE BUY COUNT
         # =========================
         await execute(
-            "UPDATE files SET buy_count = COALESCE(buy_count, 0) + 1 WHERE code=$1",
+            """
+            UPDATE files
+            SET buy_count = COALESCE(buy_count, 0) + 1
+            WHERE code=$1
+            """,
             purchase["file_code"]
         )
 
