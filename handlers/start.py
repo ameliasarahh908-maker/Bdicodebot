@@ -171,6 +171,20 @@ async def process_start(message, loading, user_id, username):
 
                 print(f"✅ Referral masuk ke {ref_id}")
 
+                # =========================
+                # 🔥 AUTO REWARD DI SINI
+                # =========================
+                from utils.referral import check_referral_reward
+                reward = await check_referral_reward(pool, int(ref_id))
+                if reward:
+                    try:
+                        await bot.send_message(
+                            int(ref_id),
+                            f"{reward}\n\n🚀 Terima kasih sudah mengundang user!"
+                        )
+                    except:
+                        pass
+
     # =========================
     # GET USER
     # =========================
