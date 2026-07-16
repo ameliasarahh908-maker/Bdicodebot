@@ -118,6 +118,18 @@ async def add_quota(user_id: int, amount: int):
     await save_user_data(user_id, data)
 
 
+
+async def add_referral(user_id: int):
+    data = await get_user_data(user_id)
+
+    # tambah referral
+    data["referral_count"] = data.get("referral_count", 0) + 1
+
+    await save_user_data(user_id, data)
+
+    return data["referral_count"]
+
+
 # =========================
 # GET QUOTA
 # =========================
