@@ -1,33 +1,16 @@
-import json
+import json,time
 
-from aiogram import Router, F
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from aiogram import Router,F
+from aiogram.types import Message,InlineKeyboardMarkup,InlineKeyboardButton
+
 from utils.user import get_user_status
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-
 from database import get_pool
 
-router = Router()
+router=Router()
 
 
-# =========================
-# STATE
-# =========================
-class GetFileState(StatesGroup):
-    wait_code = State()
-
-
-# =========================
-# UTIL
-# =========================
 def safe_json(data):
-    if isinstance(data, str):
+    if isinstance(data,str):
         try:
             return json.loads(data)
         except:
@@ -36,78 +19,14 @@ def safe_json(data):
 
 
 def get_first_media(media):
-    return media[0] if isinstance(media, list) and media else None
+    return media[0] if isinstance(media,list) and media else None
 
 
-# =========================
-# START
-# =========================
-@router.callback_query(F.data == "getfile")
-async def getfile_start(call: CallbackQuery, state: FSMContext):
+async def open_file_by_code(message:Message,code:str):
 
-    await state.set_state(GetFileState.wait_code)
+    pool=await get_pool()
 
-    await call.message.edit_text(
-        "🔑 KIRIM KODE FILE"
-    )
-
-    await call.answer()
-
-
-# =========================
-# RECEIVE CODE
-# =========================
-@router.message(GetFileState.wait_code)
-async def receive_code(message: Message, state: FSMContext):
-
-    if not message.text:
-        return await message.answer("❌ Kode kosong")
-
-    import re
-    import time
-
-    text = message.text.strip()
-
-    # =========================
-    # AMBIL CODE
-    # =========================
-
-    code = None
-
-    m = re.search(
-        r"getFile_([A-Za-z0-9_-]+)",
-        text,
-        re.IGNORECASE
-    )
-
-    if m:
-        code = m.group(1)
-
-
-    if not code:
-
-        m = re.search(
-            r"code\s*[:：]\s*([A-Za-z0-9_-]+)",
-            text,
-            re.IGNORECASE
-        )
-
-        if m:
-            code = m.group(1)
-
-
-    if not code:
-        code = text
-
-
-    pool = await get_pool()
-
-
-    # =========================
-    # GET FILE
-    # =========================
-
-    file = await pool.fetchrow(
+    file=await pool.fetchrow(
         """
         SELECT *
         FROM files
@@ -116,250 +35,47 @@ async def receive_code(message: Message, state: FSMContext):
         """,
         code
     )
-
-
-    if not file:
-
-        await message.answer(
-            "❌ CODE TIDAK DITEMUKAN"
-        )
-
-        await state.clear()
-        return
-
-
-
-    # =========================
-    # EXPIRED CHECK
-    # =========================
-
-    expires_at = file["expires_at"]
-
-    if expires_at:
-
-        if hasattr(expires_at, "timestamp"):
-
-            expired = (
-                expires_at.timestamp()
-                < time.time()
-            )
-
-        else:
-
-            expired = (
-                expires_at
-                < int(time.time())
-            )
-
-
-        if expired:
-
-            await message.answer(
-                "❌ File sudah kadaluarsa."
-            )
-
-            await state.clear()
-            return
-
-
-
-    # =========================
-    # VIEW COUNT
-    # =========================
-
-    await pool.execute(
-        """
-        UPDATE files
-        SET view_count = view_count + 1
-        WHERE code=$1
-        """,
-        code
-    )
-
-
-
-    media = safe_json(
-        file["media"]
-    )
-
-    # =========================
-    # 🔥 USER LEVEL (NEW)
-    # =========================
-    user_level = await get_user_status(pool, message.from_user.id)
-
- 
-    if not media:
-
-        await message.answer(
-            "❌ FILE KOSONG"
-        )
-
-        await state.clear()
-        return
-
-    is_paid = file["is_paid"] or False
-    price = file["price"] or 0
-
-
-    owner = (
-        message.from_user.id
-        ==
-        file["owner_id"]
-    )
-
-    access = await pool.fetchval(
-        """
-        SELECT EXISTS(
-            SELECT 1
-            FROM file_purchases
-            WHERE user_id=$1
-            AND file_code=$2
-            AND status='paid'
-        )
-        """,
-        message.from_user.id,
-        code
-    )
-
-
-    has_access = (
-        owner
-        or access
-        or user_level == "vip"
-        or user_level == "vvip"
-    )
-
-
-    # =========================
-    # PAID LOCK
-    # =========================
-
-    if is_paid and not has_access:
-
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
-                        callback_data=f"pay:{code}"
-                    )
-                ]
-            ]
-        )
-
-
-        await message.answer(
-            (
-                "🔒 <b>FILE BERBAYAR</b>\n\n"
-                f"🔑 CODE : <code>{code}</code>\n"
-                f"💰 HARGA : Rp {price:,}\n\n"
-                "Silakan bayar untuk membuka file."
-            ).replace(",", "."),
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-
-
-        await state.clear()
-        return
-
-
-
-    # =========================
-    # FREE FILE MENU
-    # =========================
-
-    from handlers.open_menu import open_keyboard
-
-
-    await message.answer(
-        (
-            "✅ <b>FILE DITEMUKAN</b>\n\n"
-            f"📦 Total Media : <b>{len(media)}</b>\n\n"
-            "Pilih metode pengiriman:"
-        ),
-        parse_mode="HTML",
-        reply_markup=open_keyboard(code)
-    )
-
-
-    await state.clear()
-
-# =========================
-# DEEP LINK HANDLER
-# =========================
-async def open_file_by_code(
-    message: Message,
-    code: str
-):
-
-    pool = await get_pool()
-
-    file = await pool.fetchrow(
-        """
-        SELECT *
-        FROM files
-        WHERE LOWER(code)=LOWER($1)
-        LIMIT 1
-        """,
-        code
-    )
-
 
     if not file:
         return await message.answer(
             "❌ File tidak ditemukan."
         )
 
+    media=safe_json(file["media"])
 
-    media = safe_json(
-        file["media"]
+    user_level=await get_user_status(
+        pool,
+        message.from_user.id
     )
-
-    # =========================
-    # 🔥 USER LEVEL (NEW)
-    # =========================
-    user_level = await get_user_status(pool, message.from_user.id)
 
     if not media:
         return await message.answer(
             "❌ File kosong."
         )
 
-
-    # =========================
-    # EXPIRED CHECK
-    # =========================
-
-    import time
-
-    expires_at = file["expires_at"]
+    expires_at=file["expires_at"]
 
     if expires_at:
 
-        if hasattr(expires_at, "timestamp"):
-            expired = expires_at.timestamp() < time.time()
-
+        if hasattr(expires_at,"timestamp"):
+            expired=expires_at.timestamp()<time.time()
         else:
-            expired = expires_at < int(time.time())
-
+            expired=expires_at<int(time.time())
 
         if expired:
             return await message.answer(
                 "❌ File sudah kadaluarsa."
             )
 
-    is_paid = file["is_paid"] or False
-    price = file["price"] or 0
+    is_paid=file["is_paid"] or False
+    price=file["price"] or 0
 
-
-    owner = (
-        message.from_user.id ==
+    owner=(
+        message.from_user.id==
         file["owner_id"]
     )
 
-    access = await pool.fetchval(
+    access=await pool.fetchval(
         """
         SELECT EXISTS(
             SELECT 1
@@ -373,51 +89,40 @@ async def open_file_by_code(
         code
     )
 
-
-    has_access = (
+    has_access=(
         owner
         or access
-        or user_level == "vip"
-        or user_level == "vvip"
+        or user_level=="vip"
+        or user_level=="vvip"
     )
 
 
-    # =========================
-    # PAID FILE
-    # =========================
-
     if is_paid and not has_access:
 
-        keyboard = InlineKeyboardMarkup(
+        keyboard=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"💳 BAYAR Rp {price:,}".replace(",", "."),
+                        text=f"💳 BAYAR Rp {price:,}".replace(",","."),
                         callback_data=f"pay:{code}"
                     )
                 ]
             ]
         )
 
-
         return await message.answer(
             (
                 "🔒 <b>FILE BERBAYAR</b>\n\n"
                 f"🔑 CODE : <code>{code}</code>\n"
                 f"💰 HARGA : Rp {price:,}\n\n"
-                "Silakan lakukan pembayaran untuk membuka file."
-            ).replace(",", "."),
+                "Silakan bayar untuk membuka file."
+            ).replace(",","."),
             parse_mode="HTML",
             reply_markup=keyboard
         )
 
 
-    # =========================
-    # FREE FILE MENU
-    # =========================
-
     from handlers.open_menu import open_keyboard
-
 
     return await message.answer(
         (
@@ -427,4 +132,30 @@ async def open_file_by_code(
         ),
         parse_mode="HTML",
         reply_markup=open_keyboard(code)
+    )
+
+
+import re
+
+@router.message(F.text)
+async def auto_get_file(message:Message):
+
+    if not message.text:
+        return
+
+    text=message.text
+
+    match=re.search(
+        r"Zyx\d{8}File\d{8}",
+        text,
+        re.IGNORECASE
+    )
+    if not match:
+        return
+
+    code=match.group(0)
+    
+    await open_file_by_code(
+        message,
+        code
     )
