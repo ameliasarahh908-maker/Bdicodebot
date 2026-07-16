@@ -209,21 +209,24 @@ async def receive_code(message: Message, state: FSMContext):
 
     access = await pool.fetchval(
         """
-        SELECT 1
-        FROM file_purchases
-        WHERE user_id=$1
-        AND file_code=$2
-        AND status='paid'
+        SELECT EXISTS(
+            SELECT 1
+            FROM file_purchases
+            WHERE user_id=$1
+            AND file_code=$2
+            AND status='paid'
+        )
         """,
         message.from_user.id,
         code
     )
 
 
-    has_access = bool(
+    has_access = (
         owner
         or access
-        or user_level in ["vip", "vvip"]
+        or user_level == "vip"
+        or user_level == "vvip"
     )
 
 
@@ -358,21 +361,24 @@ async def open_file_by_code(
 
     access = await pool.fetchval(
         """
-        SELECT 1
-        FROM file_purchases
-        WHERE user_id=$1
-        AND file_code=$2
-        AND status='paid'
+        SELECT EXISTS(
+            SELECT 1
+            FROM file_purchases
+            WHERE user_id=$1
+            AND file_code=$2
+            AND status='paid'
+        )
         """,
         message.from_user.id,
         code
     )
 
 
-    has_access = bool(
+    has_access = (
         owner
         or access
-        or user_level in ["vip", "vvip"]
+        or user_level == "vip"
+        or user_level == "vvip"
     )
 
 
