@@ -189,14 +189,22 @@ async def receive_media(message: Message, state: FSMContext):
         if not data.get("upload_mode"):
             return
 
+
         media = data.get("media", [])
+
 
         if len(media) >= MAX_MEDIA:
             return await message.answer(
                 f"❌ Maksimal {MAX_MEDIA} file."
             )
 
+
+        # =========================
+        # COPY KE STORAGE CHANNEL
+        # =========================
+
         try:
+
             copy = await message.bot.copy_message(
                 chat_id=STORAGE_CHANNEL_ID,
                 from_chat_id=message.chat.id,
@@ -205,26 +213,71 @@ async def receive_media(message: Message, state: FSMContext):
 
             storage_message_id = copy.message_id
 
+
         except Exception as e:
-            logging.error(f"STORAGE COPY ERROR: {e}")
+
+            logging.error(
+                f"STORAGE COPY ERROR: {e}"
+            )
+
             return await message.answer(
                 "❌ Gagal menyimpan file."
             )
 
+
+        # =========================
+        # AMBIL FILE ID
+        # =========================
+
         if message.document:
+
             media_type = "document"
+
+            file_id = message.document.file_id
+
             file_name = message.document.file_name
-            file_size = message.document.file_size or 0
+
+            file_size = (
+                message.document.file_size
+                or 0
+            )
+
 
         elif message.video:
+
             media_type = "video"
-            file_name = getattr(message.video, "file_name", None)
-            file_size = message.video.file_size or 0
+
+            file_id = message.video.file_id
+
+            file_name = getattr(
+                message.video,
+                "file_name",
+                None
+            )
+
+            file_size = (
+                message.video.file_size
+                or 0
+            )
+
 
         else:
+
             media_type = "photo"
+
+            file_id = message.photo[-1].file_id
+
             file_name = None
-            file_size = message.photo[-1].file_size or 0
+
+            file_size = (
+                message.photo[-1].file_size
+                or 0
+            )
+
+
+        # =========================
+        # CEK DUPLIKAT
+        # =========================
 
         if any(
             x.get("message_id") == storage_message_id
@@ -232,45 +285,79 @@ async def receive_media(message: Message, state: FSMContext):
         ):
             return
 
+
+
+        # =========================
+        # SIMPAN DATA MEDIA
+        # =========================
+
         media.append({
+
             "message_id": storage_message_id,
+
+            "file_id": file_id,
+
             "type": media_type,
+
             "file_name": file_name,
+
             "file_size": file_size
+
         })
+
 
         await state.update_data(
             media=media
         )
 
+
+        # Hapus pesan asli user
+
         try:
             await message.delete()
+
         except:
             pass
 
+
+
+        # =========================
+        # UPDATE PROGRESS
+        # =========================
+
         text = (
             "📦 <b>UPLOAD MODE</b>\n\n"
-            f"📁 Total File: <b>{len(media)}/{MAX_MEDIA}</b>\n\n"
+            f"📁 Total File: "
+            f"<b>{len(media)}/{MAX_MEDIA}</b>\n\n"
             "Jika sudah selesai tekan tombol di bawah."
         )
 
+
         kb = InlineKeyboardBuilder()
+
 
         kb.button(
             text="⏹ STOP & SAVE",
             callback_data="save_upfile"
         )
 
+
         kb.button(
             text="❌ BATAL",
             callback_data="cancel_upfile"
         )
 
+
         kb.adjust(1)
 
-        msg_id = data.get("progress_msg_id")
+
+        msg_id = data.get(
+            "progress_msg_id"
+        )
+
 
         if msg_id:
+
             await safe_update(
                 message.bot,
                 message.chat.id,
@@ -542,38 +629,78 @@ async def input_price(message: Message, state: FSMContext):
 # FINAL SAVE
 # =========================
 async def finalize_save(message: Message, state: FSMContext, user_id: int):
+
     data = await state.get_data()
 
     if data.get("saving"):
         return
 
-    await state.update_data(saving=True)
+
+    await state.update_data(
+        saving=True
+    )
+
 
     try:
+
         media = [
             m for m in data.get("media", [])
-            if m.get("message_id")
+            if m.get("message_id") and m.get("file_id")
         ]
 
+
         if not media:
-            await state.update_data(saving=False)
-            return await message.answer("❌ No media found")
+
+            await state.update_data(
+                saving=False
+            )
+
+            return await message.answer(
+                "❌ No media found"
+            )
+
 
         title = data.get("title") or "Untitled File"
+
         creator = message.from_user.full_name
 
-        share_media = data.get("share_media", True)
-        is_paid = data.get("is_paid", False)
-        price = data.get("price", 0)
-        payment_provider = data.get("payment_provider")
+        share_media = data.get(
+            "share_media",
+            True
+        )
+
+        is_paid = data.get(
+            "is_paid",
+            False
+        )
+
+        price = data.get(
+            "price",
+            0
+        )
+
+        payment_provider = data.get(
+            "payment_provider"
+        )
+
 
         pool = await get_pool()
 
 
+
+        # =========================
+        # UPDATE USER
+        # =========================
+
         await pool.execute(
             """
-            INSERT INTO users(id, username, full_name)
+            INSERT INTO users(
+                id,
+                username,
+                full_name
+            )
             VALUES($1,$2,$3)
+
             ON CONFLICT(id)
             DO UPDATE SET
                 username=EXCLUDED.username,
@@ -585,25 +712,51 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         )
 
 
+
+        # =========================
+        # GENERATE CODE
+        # =========================
+
         while True:
-            code = "zyxfidxbot" + "".join(
-                random.choices(
-                    string.ascii_uppercase + string.digits,
-                    k=10
+
+            code = (
+                "zyxfidxbot"
+                +
+                "".join(
+                    random.choices(
+                        string.ascii_uppercase
+                        + string.digits,
+                        k=10
+                    )
                 )
             )
 
+
             exists = await pool.fetchval(
-                "SELECT 1 FROM files WHERE code=$1",
+                """
+                SELECT 1
+                FROM files
+                WHERE code=$1
+                """,
                 code
             )
+
 
             if not exists:
                 break
 
 
-        main_link = f"https://t.me/{BOT_USERNAME}?start=getFile_{code}"
 
+        main_link = (
+            f"https://t.me/{BOT_USERNAME}"
+            f"?start=getFile_{code}"
+        )
+
+
+
+        # =========================
+        # SAVE FILE
+        # =========================
 
         await pool.execute(
             """
@@ -625,6 +778,7 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 download_count,
                 favorite_count
             )
+
             VALUES(
                 $1,$2,$3,$4,$5,$6,
                 $7,$8,$9,NULL,
@@ -632,6 +786,7 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 $13,$14,$15
             )
             """,
+
             code,
             title,
             creator,
@@ -650,57 +805,99 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         )
 
 
+
         # =========================
-        # SIMPAN MEDIA SESUAI SCHEMA DB
+        # SAVE MEDIA TABLE
         # =========================
 
         values = []
 
+
         for m in media:
+
             values.append(
                 (
                     code,
-                    str(m.get("message_id")),
-                    m.get("type"),
-                    m.get("file_size",0),
+
+                    int(
+                        m.get(
+                            "message_id"
+                        )
+                    ),
+
+                    m.get(
+                        "file_id"
+                    ),
+
+                    m.get(
+                        "type"
+                    ),
+
+                    m.get(
+                        "file_size",
+                        0
+                    ),
+
                     title
                 )
             )
 
 
+
         if values:
+
             await pool.executemany(
                 """
                 INSERT INTO medias(
                     code,
+                    message_id,
                     file_id,
                     file_type,
                     file_size,
                     title
                 )
-                VALUES($1,$2,$3,$4,$5)
+
+                VALUES(
+                    $1,$2,$3,$4,$5,$6
+                )
                 """,
                 values
             )
 
 
+
         await state.clear()
 
 
+
         media_mode = (
-            f"💰 Media Mode : Paid (Rp {price:,})".replace(",", ".")
+
+            f"💰 Media Mode : Paid "
+            f"(Rp {price:,})"
+            .replace(",", ".")
+
             if is_paid
-            else "🆓 Media Mode : Free"
+
+            else
+
+            "🆓 Media Mode : Free"
         )
+
 
 
         text = (
             "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
+
             f"📋 Files : {len(media)}\n"
-            f"🔑 Code : <code>{code}</code>\n"
+
+            f"🔑 Code : "
+            f"<code>{code}</code>\n"
+
             f"{media_mode}\n\n"
+
             f"🔗 Link : {main_link}"
         )
+
 
 
         await message.answer(
@@ -709,30 +906,45 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         )
 
 
+
+        # =========================
+        # LOG CHANNEL
+        # =========================
+
         try:
+
             me = await message.bot.get_me()
+
 
             await message.bot.send_message(
                 CHANNEL_ID,
-                text + f"\n\n🤖 Upload Bot : @{me.username}",
+                text
+                +
+                f"\n\n🤖 Upload Bot : @{me.username}",
                 parse_mode="HTML"
             )
 
+
         except Exception as e:
+
             logging.error(
                 f"LOG CHANNEL ERROR: {e}"
             )
 
 
+
     except Exception as e:
+
 
         logging.error(
             f"FINAL SAVE ERROR: {e}"
         )
 
+
         await state.update_data(
             saving=False
         )
+
 
         await message.answer(
             "❌ Gagal menyimpan file."
