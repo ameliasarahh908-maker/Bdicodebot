@@ -9,6 +9,11 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
+from aiogram.types import (
+    InputMediaPhoto,
+    InputMediaVideo,
+    InputMediaDocument
+)
 
 from database import get_pool
 from config import STORAGE_CHANNEL_ID
@@ -83,14 +88,18 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     media = file["media"]
 
     if isinstance(media, str):
+
         try:
             media = json.loads(media)
+
         except Exception as e:
+
             print("JSON ERROR", e)
             return False
 
 
-    if not isinstance(media, list) or not media:
+    if not media:
+
         print("MEDIA EMPTY")
         return False
 
@@ -108,9 +117,10 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
     chunk = media[
-        (page - 1) * PAGE_SIZE :
+        (page - 1) * PAGE_SIZE:
         page * PAGE_SIZE
     ]
+
 
 
     share_media = file["share_media"]
@@ -122,6 +132,7 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     protect = not share_media
 
 
+
     caption = (
         "ZyxFidxBot\n"
         "━━━━━━━━━━━━━━━\n\n"
@@ -131,11 +142,13 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     )
 
 
-    sent = 0
+
+    album = []
+
 
 
     # =========================
-    # COPY 10 MEDIA
+    # BUILD ALBUM 10 MEDIA
     # =========================
 
     for index, item in enumerate(chunk):
@@ -144,41 +157,108 @@ async def send_page(bot, chat_id, user_id, code, page=1):
             continue
 
 
-        message_id = item.get("message_id")
+        file_id = item.get("file_id")
 
-        if not message_id:
+
+        if not file_id:
             continue
+
+
+        media_type = (
+            item.get("type")
+            or "document"
+        ).lower()
+
+
+
+        cap = caption if index == 0 else None
+
 
 
         try:
 
-            await bot.copy_message(
-                chat_id=chat_id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=message_id,
-                caption=caption if index == 0 else None,
-                protect_content=protect
-            )
+            if media_type == "photo":
 
-            sent += 1
+                album.append(
+                    InputMediaPhoto(
+                        media=file_id,
+                        caption=cap
+                    )
+                )
+
+
+            elif media_type == "video":
+
+                album.append(
+                    InputMediaVideo(
+                        media=file_id,
+                        caption=cap
+                    )
+                )
+
+
+            else:
+
+                album.append(
+                    InputMediaDocument(
+                        media=file_id,
+                        caption=cap
+                    )
+                )
 
 
         except Exception as e:
 
             print(
-                "COPY PAGE ERROR",
-                message_id,
+                "BUILD ALBUM ERROR",
                 e
             )
 
 
 
-    if sent == 0:
+    if not album:
 
         print(
-            "NO MEDIA SENT",
+            "ALBUM EMPTY",
             code,
             page
+        )
+
+        return False
+
+
+
+    # =========================
+    # SEND 1 BUBBLE
+    # =========================
+
+    try:
+
+        if len(album) == 1:
+
+            await bot.send_document(
+                chat_id,
+                album[0].media,
+                caption=caption,
+                protect_content=protect
+            )
+
+
+        else:
+
+            await bot.send_media_group(
+                chat_id,
+                album,
+                protect_content=protect
+            )
+
+
+
+    except Exception as e:
+
+        print(
+            "SEND ALBUM ERROR",
+            e
         )
 
         return False
@@ -209,11 +289,12 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     )
 
 
+
     nav = await bot.send_message(
         chat_id,
         (
             f"📦 PAGE {page}/{total_page}\n"
-            f"✅ {sent}/{len(chunk)} Media"
+            f"✅ {len(album)}/{len(chunk)} Media"
         ),
         reply_markup=keyboard
     )
@@ -224,11 +305,14 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     ] = nav.message_id
 
 
+
     print(
-        "PAGE SENT",
+        "ALBUM SENT",
         code,
+        "PAGE",
         page,
-        sent
+        "MEDIA",
+        len(album)
     )
 
 
