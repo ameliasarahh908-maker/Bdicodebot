@@ -95,36 +95,20 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
     else:
 
-        vip = await pool.fetchval(
-            """
-            SELECT 1
-            FROM users
-            WHERE telegram_id=$1
-            AND vip=TRUE
-            AND vip_until > NOW()
-            """,
-            user_id
-        )
-
-        if vip:
-            bought = True
-
-        else:
-
-            bought = bool(
-                await pool.fetchval(
-                    """
-                    SELECT 1
-                    FROM file_purchases
-                    WHERE user_id=$1
-                    AND file_code=$2
-                    AND status='paid'
-                    LIMIT 1
-                    """,
-                    user_id,
-                    code
-                )
+        bought = bool(
+            await pool.fetchval(
+                """
+                SELECT 1
+                FROM file_purchases
+                WHERE user_id=$1
+                AND file_code=$2
+                AND status='paid'
+                LIMIT 1
+                """,
+                user_id,
+                code
             )
+        )
 
 
     if not bought:
@@ -136,7 +120,6 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         return False
 
 
-
     # =========================
     # LOAD MEDIA
     # =========================
@@ -146,28 +129,49 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     if isinstance(media, str):
         try:
             media = json.loads(media)
-        except Exception:
-            print("MEDIA JSON ERROR")
+        except Exception as e:
+            print(
+                "MEDIA JSON ERROR",
+                e
+            )
             return False
+
 
     if not isinstance(media, list) or not media:
         print("MEDIA EMPTY")
         return False
+
 
     total_page = max(
         1,
         (len(media) + PAGE_SIZE - 1) // PAGE_SIZE
     )
 
+
     page = max(
         1,
         min(page, total_page)
     )
 
+
+    chunk = media[
+        (page - 1) * PAGE_SIZE:
+        page * PAGE_SIZE
+    ]
+
+
+    if not chunk:
+        print("PAGE EMPTY")
+        return False
+
+
+
     # =========================
-    # DOWNLOAD COUNTER
+    # COUNTER
     # =========================
+
     if page == 1:
+
         await pool.execute(
             """
             UPDATE files
@@ -177,10 +181,16 @@ async def send_page(bot, chat_id, user_id, code, page=1):
             code
         )
 
-    chunk = media[
-        (page - 1) * PAGE_SIZE:
-        page * PAGE_SIZE
-    ]
+
+    share_media = file["share_media"]
+
+    if share_media is None:
+        share_media = True
+
+
+    protect = not share_media
+
+
 
     caption = (
         "𝗘𝗔𝗥𝗡𝗙𝗜𝗟𝗘𝗕𝗢𝗫\n"
@@ -190,178 +200,119 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         f"📊 TOTAL : {len(media)} FILE"
     )
 
-    share_media = file["share_media"]
 
-    if share_media is None:
-        share_media = True
-
-    protect = not share_media
-
-
-    album = []
-
-
-
-    for index, item in enumerate(chunk):
-
-        if not isinstance(item, dict):
-            continue
-
-
-        fid = clean_file_id(
-            item.get("file_id")
-        )
-
-        ftype = (
-            item.get("type")
-            or "document"
-        ).lower()
-
-
-        if not fid:
-            continue
-
-
-        cap = caption if index == 0 else None
-
-
-        if ftype in ("photo", "image"):
-
-            album.append(
-                InputMediaPhoto(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-        elif ftype == "video":
-
-            album.append(
-                InputMediaVideo(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-        else:
-
-            album.append(
-                InputMediaDocument(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-
-    if not album:
-        print("ALBUM EMPTY")
-        return False
-
-
+    # =========================
+    # SEND PAGE VIA STORAGE
+    # =========================
 
     try:
 
-        # =========================
-        # SEND MEDIA
-        # =========================
-
-        if len(album) == 1:
-
-            item = chunk[0]
-
-            fid = item.get("file_id")
-            ftype = (
-                item.get("type")
-                or "document"
-            ).lower()
+        sent = 0
 
 
-            if ftype in ("photo","image"):
+        for index, item in enumerate(chunk):
 
-                await bot.send_photo(
-                    chat_id,
-                    fid,
-                    caption=caption,
-                    protect_content=protect
-                )
+            if not isinstance(item, dict):
+                continue
 
 
-            elif ftype == "video":
-
-                await bot.send_video(
-                    chat_id,
-                    fid,
-                    caption=caption,
-                    protect_content=protect
-                )
-
-
-            else:
-
-                await bot.send_document(
-                    chat_id,
-                    fid,
-                    caption=caption,
-                    protect_content=protect
-                )
-
-
-        else:
-
-            await bot.send_media_group(
-                chat_id=chat_id,
-                media=album,
-                protect_content=protect
+            message_id = item.get(
+                "message_id"
             )
 
 
+            if not message_id:
+                continue
+
+
+            try:
+
+                await bot.copy_message(
+                    chat_id=chat_id,
+                    from_chat_id=STORAGE_CHANNEL_ID,
+                    message_id=message_id,
+                    protect_content=protect
+                )
+
+                sent += 1
+
+
+            except Exception as e:
+
+                print(
+                    "COPY MEDIA ERROR",
+                    message_id,
+                    e
+                )
+
+
+
+        if sent == 0:
+
+            print(
+                "NO MEDIA SENT"
+            )
+
+            return False
+
+
 
         # =========================
-        # BUTTON
+        # NAV BUTTON
         # =========================
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-             build_page_buttons(
-                 code,
-                 page,
-                 total_page
-             ),
-             [
-                 InlineKeyboardButton(
-                     text="📤 OPEN ALL",
-                     callback_data=f"all:{code}"
-                 )
-             ],
-             [
-                 InlineKeyboardButton(
-                     text="📢 Channel Update",
-                     url="https://t.me/+F6-XB1gFA9VhMDc1"
-                 ),
-                 InlineKeyboardButton(
-                     text="🔔 Notifikasi Code",
-                     url="https://t.me/+T8c4gdEWf843ZWQ1"
-                 )
-             ]
-         ]
-     )
+
+                build_page_buttons(
+                    code,
+                    page,
+                    total_page
+                ),
+
+                [
+                    InlineKeyboardButton(
+                        text="📤 OPEN ALL",
+                        callback_data=f"all:{code}"
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        text="📢 Channel Update",
+                        url="https://t.me/+F6-XB1gFA9VhMDc1"
+                    ),
+
+                    InlineKeyboardButton(
+                        text="🔔 Notifikasi Code",
+                        url="https://t.me/+T8c4gdEWf843ZWQ1"
+                    )
+                ]
+            ]
+        )
+
 
         nav_msg = await bot.send_message(
             chat_id,
-            "📦 NAVIGATION",
+            (
+                f"📦 NAVIGATION\n"
+                f"Page {page}/{total_page}"
+            ),
             reply_markup=keyboard
         )
 
-        NAV_CACHE[(user_id, code)] = nav_msg.message_id
+
+        NAV_CACHE[
+            (user_id, code)
+        ] = nav_msg.message_id
+
 
 
         print(
             "SEND PAGE SUCCESS",
             code,
-            page
+            page,
+            sent
         )
 
 
@@ -372,7 +323,7 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     except Exception as e:
 
         print(
-            "SEND MEDIA ERROR",
+            "SEND PAGE ERROR",
             repr(e)
         )
 
@@ -446,147 +397,123 @@ async def page_handler(call: CallbackQuery):
 
     user_id = call.from_user.id
 
-    # ✅ JAWAB DULU (WAJIB)
     try:
         await call.answer("📂 Loading...")
     except:
         pass
+
 
     try:
         _, code, page = call.data.split(":")
         page = int(page)
 
     except:
-        try:
-            await call.answer("❌ Invalid data", show_alert=True)
-        except:
-            pass
         return
 
-    now = time.time()
-    key = (user_id, code)
 
-    # =========================
-    # SAME PAGE COOLDOWN
-    # =========================
-    last = PAGE_CACHE.get(key)
-
-    if last:
-        last_page, last_time = last
-
-        if last_page == page:
-            sisa = SAME_PAGE_COOLDOWN - (now - last_time)
-
-            if sisa > 0:
-                try:
-                    await call.answer(
-                        f"⏳ Halaman ini sudah dibuka.\n"
-                        f"Coba lagi {int(sisa)} detik.",
-                        show_alert=True
-                    )
-                except:
-                    pass
-                return
-
-    # =========================
-    # CHANGE PAGE COOLDOWN
-    # =========================
-    change = PAGE_CHANGE.get(key)
-
-    if change:
-        old_page, old_time = change
-
-        if old_page != page:
-            sisa = CHANGE_PAGE_COOLDOWN - (now - old_time)
-
-            if sisa > 0:
-                try:
-                    await call.answer(
-                        f"⏳ Tunggu {int(sisa)} detik sebelum pindah halaman.",
-                        show_alert=True
-                    )
-                except:
-                    pass
-                return
-
-    PAGE_CACHE[key] = (page, now)
-    PAGE_CHANGE[key] = (page, now)
 
     async with USER_LOCK[user_id]:
 
         pool = await get_pool()
+
 
         file = await pool.fetchrow(
             """
             SELECT *
             FROM files
             WHERE code=$1
+            LIMIT 1
             """,
             code
         )
 
+
         if not file:
-            try:
-                await call.answer("❌ File tidak ditemukan", show_alert=True)
-            except:
-                pass
-            return
+
+            return await call.answer(
+                "❌ File tidak ditemukan",
+                show_alert=True
+            )
+
+
 
         media = file["media"]
 
         if isinstance(media, str):
-            media = json.loads(media)
+
+            try:
+                media = json.loads(media)
+
+            except:
+                media = []
+
+
+
+        if not media:
+
+            return await call.answer(
+                "❌ Media kosong",
+                show_alert=True
+            )
+
+
 
         total_page = max(
             1,
-            (len(media) + PAGE_SIZE - 1) // PAGE_SIZE
+            (len(media)+PAGE_SIZE-1)//PAGE_SIZE
         )
 
+
         if page > total_page:
-            try:
-                await call.answer("📄 Halaman sudah habis.", show_alert=True)
-            except:
-                pass
-            return
 
-        # =========================
-        # ACCESS CHECK (TETAP)
-        # =========================
-        bought = False
-
-        if not file["is_paid"]:
-            bought = True
-        elif user_id == file["owner_id"]:
-            bought = True
-        else:
-            vip = await pool.fetchval(
-                """
-                SELECT 1 FROM users
-                WHERE telegram_id=$1
-                AND vip=TRUE
-                AND vip_until > NOW()
-                """,
-                user_id
+            return await call.answer(
+                "📄 Halaman habis",
+                show_alert=True
             )
 
-            if vip:
-                bought = True
-            else:
-                bought = bool(
-                    await pool.fetchval(
-                        """
-                        SELECT 1 FROM file_purchases
-                        WHERE user_id=$1
-                        AND file_code=$2
-                        AND status='paid'
-                        LIMIT 1
-                        """,
-                        user_id,
-                        code
-                    )
-                )
 
-        if not bought:
+
+        # =========================
+        # ACCESS
+        # =========================
+
+        access = False
+
+
+        # FREE
+        if not file["is_paid"]:
+            access = True
+
+
+        # OWNER
+        elif user_id == file["owner_id"]:
+            access = True
+
+
+        else:
+
+            bought = await pool.fetchval(
+                """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM file_purchases
+                    WHERE user_id=$1
+                    AND file_code=$2
+                    AND status='paid'
+                )
+                """,
+                user_id,
+                code
+            )
+
+
+            if bought:
+                access = True
+
+
+
+        if not access:
+
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -598,26 +525,38 @@ async def page_handler(call: CallbackQuery):
                 ]
             )
 
-            await call.message.answer(
+
+            return await call.message.answer(
                 "🔒 <b>FILE BERBAYAR</b>\n\n"
-                f"💰 Harga : Rp {file['price']:,}\n\n"
-                "Silakan beli file atau gunakan VIP.",
+                f"💰 Harga : Rp {file['price']:,}",
                 parse_mode="HTML",
                 reply_markup=kb
             )
-            return
 
-        old_nav = NAV_CACHE.get((user_id, code))
+
+
+        # hapus tombol lama
+
+        old_nav = NAV_CACHE.get(
+            (user_id, code)
+        )
+
 
         if old_nav:
+
             try:
+
                 await call.bot.delete_message(
                     call.message.chat.id,
                     old_nav
                 )
+
             except:
                 pass
-            NAV_CACHE.pop((user_id, code), None)
+
+
+
+        # kirim halaman
 
         await send_page(
             call.bot,
@@ -627,7 +566,9 @@ async def page_handler(call: CallbackQuery):
             page
         )
 
-@router.callback_query(F.data == "end_page")
+
+
+@router.callback_query(F.data=="end_page")
 async def end_page(call: CallbackQuery):
 
     await call.answer(
