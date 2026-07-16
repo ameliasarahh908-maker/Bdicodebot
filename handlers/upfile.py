@@ -677,15 +677,10 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         while True:
 
             code = (
-                "zyxfidxbot"
-                +
-                "".join(
-                    random.choices(
-                        string.ascii_uppercase
-                        + string.digits,
-                        k=10
-                    )
-                )
+                "Zyx"
+                + str(random.randint(10000000,99999999))
+                + "File"
+                + str(random.randint(10000000,99999999))
             )
 
 
