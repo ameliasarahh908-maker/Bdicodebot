@@ -12,6 +12,7 @@ from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
 from database import get_pool
+from utils.user import get_user_status
 
 from datetime import datetime
 
