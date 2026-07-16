@@ -71,108 +71,6 @@ class UploadState(StatesGroup):
     wait_title = State()
     wait_price = State()
 
-# =========================
-# START UPLOAD
-# =========================
-@router.callback_query(F.data == "upfile")
-async def start_upfile(call: CallbackQuery, state: FSMContext):
-    await call.answer()
-
-    user_id = call.from_user.id
-    pool = await get_pool()
-
-    user = await pool.fetchrow(
-        """
-        SELECT is_vvip, vvip_expired
-        FROM users
-        WHERE id=$1
-        """,
-        user_id
-    )
-
-    upgrade_kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💎 Upgrade VVIP",
-                    callback_data="vvip"
-                )
-            ]
-        ]
-    )
-
-    if not user:
-        return await call.message.answer(
-            "🔒 <b>UPLOAD KHUSUS VVIP</b>\n\n"
-            "Fitur upload hanya tersedia untuk member VVIP.\n\n"
-            "Silakan upgrade terlebih dahulu.",
-            reply_markup=upgrade_kb,
-            parse_mode="HTML"
-        )
-
-    if not user["is_vvip"]:
-        return await call.message.answer(
-            "🔒 <b>UPLOAD KHUSUS VVIP</b>\n\n"
-            "Upload file hanya tersedia untuk VVIP.\n\n"
-            "Keuntungan VVIP:\n"
-            "✅ Upload hingga 200 file\n"
-            "✅ Storage aman\n"
-            "✅ Generate code otomatis\n\n"
-            "Upgrade sekarang:",
-            reply_markup=upgrade_kb,
-            parse_mode="HTML"
-        )
-
-    if user["vvip_expired"]:
-        from datetime import datetime, timezone
-
-        if user["vvip_expired"] < datetime.now(timezone.utc):
-            return await call.message.answer(
-                "⏳ <b>VVIP sudah expired</b>\n\n"
-                "Perpanjang VVIP untuk upload lagi.",
-                reply_markup=upgrade_kb,
-                parse_mode="HTML"
-            )
-
-    async with user_lock(user_id):
-
-        await state.clear()
-        await state.set_state(UploadState.upload)
-
-        if not await check_force_sub(call.bot, user_id):
-            return await call.message.answer(
-                "❌ Join channel terlebih dahulu.",
-                reply_markup=join_kb()
-            )
-
-        try:
-            await call.message.delete()
-        except:
-            pass
-
-        msg = await call.message.answer(
-            "📦 <b>UPLOAD MODE ACTIVE</b>\n\n"
-            "📤 Kirim foto, video atau dokumen.\n"
-            "Maksimal <b>200 file</b>.\n\n"
-            "Jika selesai tekan tombol <b>STOP & SAVE</b>.",
-            parse_mode="HTML"
-        )
-
-        await state.update_data(
-            upload_mode=True,
-            media=[],
-            title=None,
-            share_media=True,
-            is_paid=False,
-            price=0,
-            payment_provider=None,
-            view_count=0,
-            download_count=0,
-            favorite_count=0,
-            progress_msg_id=msg.message_id,
-            saving=False
-        )
-
 
 # =========================
 # RECEIVE MEDIA (STORAGE CHANNEL FIX)
@@ -186,11 +84,77 @@ async def receive_media(message: Message, state: FSMContext):
 
         data = await state.get_data()
 
+        # =========================
+        # START UPLOAD MODE
+        # =========================
+
         if not data.get("upload_mode"):
+
+            pool = await get_pool()
+
+            user = await pool.fetchrow("""
+                SELECT is_admin,is_vvip,vvip_expired
+                FROM users
+                WHERE id=$1
+            """, user_id)
+
+            if not user:
+                return
+
+            from datetime import datetime, timezone
+
+            allowed = user["is_admin"] or (
+                user["is_vvip"] and (
+                    not user["vvip_expired"] or
+                    user["vvip_expired"] > datetime.now(timezone.utc)
+                )
+            )
+
+            if not allowed:
+                return
+
+            if not await check_force_sub(message.bot, user_id):
+                return await message.answer(
+                    "❌ Join channel terlebih dahulu.",
+                    reply_markup=join_kb()
+                )
+
+            await state.clear()
+
+            await state.set_state(
+                UploadState.upload
+            )
+
+            msg = await message.answer(
+                "📦 <b>UPLOAD DIMULAI</b>\n\n"
+                "Kirim media sebanyak yang diinginkan.\n"
+                "Jika selesai tekan <b>STOP & SAVE</b>.",
+                parse_mode="HTML"
+            )
+
+            await state.update_data(
+                upload_mode=True,
+                media=[],
+                title=None,
+                share_media=True,
+                is_paid=False,
+                price=0,
+                payment_provider=None,
+                progress_msg_id=msg.message_id,
+                saving=False
+            )
+
             return
 
 
-        media = data.get("media", [])
+        # =========================
+        # AMBIL DATA MEDIA
+        # =========================
+
+        media = data.get(
+            "media",
+            []
+        )
 
 
         if len(media) >= MAX_MEDIA:
@@ -200,7 +164,7 @@ async def receive_media(message: Message, state: FSMContext):
 
 
         # =========================
-        # COPY KE STORAGE CHANNEL
+        # COPY STORAGE CHANNEL
         # =========================
 
         try:
@@ -226,7 +190,7 @@ async def receive_media(message: Message, state: FSMContext):
 
 
         # =========================
-        # AMBIL FILE ID
+        # DETEKSI MEDIA
         # =========================
 
         if message.document:
@@ -238,8 +202,7 @@ async def receive_media(message: Message, state: FSMContext):
             file_name = message.document.file_name
 
             file_size = (
-                message.document.file_size
-                or 0
+                message.document.file_size or 0
             )
 
 
@@ -256,8 +219,7 @@ async def receive_media(message: Message, state: FSMContext):
             )
 
             file_size = (
-                message.video.file_size
-                or 0
+                message.video.file_size or 0
             )
 
 
@@ -270,8 +232,7 @@ async def receive_media(message: Message, state: FSMContext):
             file_name = None
 
             file_size = (
-                message.photo[-1].file_size
-                or 0
+                message.photo[-1].file_size or 0
             )
 
 
@@ -286,9 +247,8 @@ async def receive_media(message: Message, state: FSMContext):
             return
 
 
-
         # =========================
-        # SIMPAN DATA MEDIA
+        # SIMPAN MEDIA
         # =========================
 
         media.append({
@@ -311,14 +271,13 @@ async def receive_media(message: Message, state: FSMContext):
         )
 
 
-        # Hapus pesan asli user
+        # HAPUS PESAN ASLI
 
         try:
             await message.delete()
 
-        except:
+        except Exception:
             pass
-
 
 
         # =========================
@@ -341,12 +300,10 @@ async def receive_media(message: Message, state: FSMContext):
             callback_data="save_upfile"
         )
 
-
         kb.button(
             text="❌ BATAL",
             callback_data="cancel_upfile"
         )
-
 
         kb.adjust(1)
 
