@@ -31,6 +31,36 @@ def mask_user_id(user_id: int) -> str:
 
     return uid[:2] + "****" + uid[-2:]
 
+async def send_upgrade_notif(bot, user_id: int, tier: str):
+    try:
+        masked = mask_user_id(user_id)
+
+        if tier.lower() == "vip":
+            text = (
+                "🌟 <b>VIP UPGRADE</b>\n\n"
+                f"👤 User: <code>{masked}</code>\n"
+                "📦 Paket: VIP"
+            )
+
+        elif tier.lower() == "vvip":
+            text = (
+                "👑 <b>VVIP UPGRADE</b>\n\n"
+                f"👤 User: <code>{masked}</code>\n"
+                "📦 Paket: VVIP"
+            )
+
+        else:
+            return
+
+        await bot.send_message(
+            chat_id=NOTIF_CHANNEL_ID,
+            text=text,
+            parse_mode="HTML"
+        )
+
+    except Exception:
+        logger.exception("UPGRADE NOTIF ERROR")
+
 PAY_LOCK_TTL = 30
 INVOICE_TTL = 3600
 
@@ -457,6 +487,17 @@ async def check_payment(call: CallbackQuery):
             "UPDATE file_purchases SET status='paid' WHERE payment_id=$1",
             invoice
         )
+
+        # =========================
+        # 🔥 DETEKSI VIP / VVIP
+        # =========================
+        code = purchase["file_code"].lower()
+
+        if "vvip" in code:
+            await send_upgrade_notif(call.bot, purchase["user_id"], "vvip")
+
+        elif "vip" in code:
+            await send_upgrade_notif(call.bot, purchase["user_id"], "vip")
 
         # =========================
         # 🔥 NOTIF CHANNEL (FIXED)
