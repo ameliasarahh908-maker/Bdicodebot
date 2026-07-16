@@ -176,13 +176,33 @@ async def get_user_status(pool, user_id):
         user_id
     )
 
-    now = datetime.utcnow()
+    import pytz
+    wib = pytz.timezone("Asia/Jakarta")
+    now = datetime.now(wib)
 
-    if vip_data:
-        if vip_data["vvip"] and vip_data["vvip_until"] and vip_data["vvip_until"] > now:
-            return "👑 VVIP"
-        elif vip_data["vip"] and vip_data["vip_until"] and vip_data["vip_until"] > now:
-            return "🔥 VIP"
+    if not vip_data:
+        return "🆓 FREE"
+
+    # =========================
+    # FIX TIMEZONE
+    # =========================
+    vvip_until = vip_data["vvip_until"]
+    vip_until = vip_data["vip_until"]
+
+    if vvip_until and vvip_until.tzinfo is None:
+        vvip_until = wib.localize(vvip_until)
+
+    if vip_until and vip_until.tzinfo is None:
+        vip_until = wib.localize(vip_until)
+
+    # =========================
+    # PRIORITY CHECK
+    # =========================
+    if vip_data["vvip"] and vvip_until and vvip_until > now:
+        return "👑 VVIP"
+
+    if vip_data["vip"] and vip_until and vip_until > now:
+        return "🔥 VIP"
 
     return "🆓 FREE"
 
