@@ -5,6 +5,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from utils.redis import init_redis
 
 from config import TIMEZONE
 from bot import bot, dp
@@ -82,6 +83,7 @@ async def lifespan(app: FastAPI):
     logging.info("APP STARTING")
 
     await get_pool()
+    await init_redis()  # ✅ WAJIB TAMBAH INI
 
     await bot.delete_webhook(
         drop_pending_updates=True
