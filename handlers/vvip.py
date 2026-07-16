@@ -14,6 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from database import get_pool
 from utils.bayargg import BayarGG
 from config_vip import VIP_PACKAGES
+from utils.safe_edit import safe_edit
 
 
 router = Router()
@@ -25,6 +26,7 @@ router = Router()
 # =========================
 @router.callback_query(F.data == "vvip")
 async def vvip_menu(call: CallbackQuery):
+    await call.answer()
 
     kb = InlineKeyboardBuilder()
 
@@ -71,25 +73,18 @@ async def vvip_menu(call: CallbackQuery):
     )
 
 
-    await call.message.edit_text(
+    await safe_edit(
+        call.message,
         text,
-        parse_mode="HTML",
         reply_markup=kb.as_markup()
     )
-
-
-    await call.answer()
-
-
-
-
 
 # =========================
 # BUY VIP / VVIP
 # =========================
 @router.callback_query(F.data.startswith("buyvip:"))
 async def buy_vip(call: CallbackQuery):
-
+    await call.answer()
 
     paket_id = call.data.split(":")[1]
 
@@ -107,9 +102,9 @@ async def buy_vip(call: CallbackQuery):
 
 
 
-    await call.message.edit_text(
+    await safe_edit(
+        call.message,
         "⏳ Membuat invoice pembayaran...",
-        parse_mode="HTML"
     )
 
 
@@ -141,23 +136,19 @@ async def buy_vip(call: CallbackQuery):
     except Exception as e:
 
 
-        return await call.message.edit_text(
-
+        return await safe_edit(
+            call.message,
             "❌ <b>Gagal membuat invoice</b>\n\n"
             f"<code>{e}</code>",
-
-            parse_mode="HTML"
         )
 
 
 
     if not payment:
 
-        return await call.message.edit_text(
-
+        return await safe_edit(
+            call.message,
             "❌ Invoice gagal dibuat.",
-
-            parse_mode="HTML"
         )
 
 
@@ -256,23 +247,16 @@ async def buy_vip(call: CallbackQuery):
     except Exception as e:
 
 
-        return await call.message.edit_text(
-
+        return await safe_edit(
+            call.message,
             "❌ <b>Database Error</b>\n\n"
             f"<code>{e}</code>",
-
-            parse_mode="HTML"
         )
-
-
-
-
+        
     paket_type = paket.get(
         "type",
         "vip"
     )
-
-
 
     if paket_type == "vvip":
 
@@ -289,9 +273,6 @@ async def buy_vip(call: CallbackQuery):
             "✅ Akses premium\n"
             "❌ Tidak bisa upload"
         )
-
-
-
 
     text = (
 
