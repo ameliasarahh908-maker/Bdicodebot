@@ -80,20 +80,17 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         return False
 
 
-    # =========================
-    # LOAD MEDIA
-    # =========================
-
     media = file["media"]
 
     if isinstance(media, str):
         try:
             media = json.loads(media)
-        except:
+        except Exception as e:
+            print("JSON ERROR", e)
             return False
 
 
-    if not media:
+    if not isinstance(media, list) or not media:
         print("MEDIA EMPTY")
         return False
 
@@ -111,14 +108,9 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
     chunk = media[
-        (page-1)*PAGE_SIZE :
-        page*PAGE_SIZE
+        (page - 1) * PAGE_SIZE :
+        page * PAGE_SIZE
     ]
-
-
-    if not chunk:
-        return False
-
 
 
     share_media = file["share_media"]
@@ -130,10 +122,6 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     protect = not share_media
 
 
-
-    album = []
-
-
     caption = (
         "ZyxFidxBot\n"
         "━━━━━━━━━━━━━━━\n\n"
@@ -143,8 +131,11 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     )
 
 
+    sent = 0
+
+
     # =========================
-    # BUILD ALBUM 10 MEDIA
+    # COPY 10 MEDIA
     # =========================
 
     for index, item in enumerate(chunk):
@@ -153,140 +144,95 @@ async def send_page(bot, chat_id, user_id, code, page=1):
             continue
 
 
-        fid = item.get("file_id")
+        message_id = item.get("message_id")
 
-        if not fid:
+        if not message_id:
             continue
 
 
-        ftype = (
-            item.get("type")
-            or "document"
-        ).lower()
+        try:
 
-
-        cap = caption if index == 0 else None
-
-
-        if ftype in ("photo","image"):
-
-            album.append(
-                InputMediaPhoto(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-        elif ftype == "video":
-
-            album.append(
-                InputMediaVideo(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-        else:
-
-            album.append(
-                InputMediaDocument(
-                    media=fid,
-                    caption=cap
-                )
-            )
-
-
-    if not album:
-        print("ALBUM EMPTY")
-        return False
-
-
-
-    try:
-
-        # =========================
-        # SEND 1 BUBBLE
-        # =========================
-
-        if len(album) == 1:
-
-            item = album[0]
-
-            await bot.send_document(
-                chat_id,
-                item.media,
-                caption=caption,
+            await bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=message_id,
+                caption=caption if index == 0 else None,
                 protect_content=protect
             )
 
+            sent += 1
 
-        else:
 
-            await bot.send_media_group(
-                chat_id,
-                album
+        except Exception as e:
+
+            print(
+                "COPY PAGE ERROR",
+                message_id,
+                e
             )
 
 
 
-        # =========================
-        # PAGE BUTTON
-        # =========================
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-
-                build_page_buttons(
-                    code,
-                    page,
-                    total_page
-                ),
-
-                [
-                    InlineKeyboardButton(
-                        text="📤 OPEN ALL",
-                        callback_data=f"all:{code}"
-                    )
-                ]
-
-            ]
-        )
-
-
-        nav = await bot.send_message(
-            chat_id,
-            f"📦 PAGE {page}/{total_page}",
-            reply_markup=keyboard
-        )
-
-
-        NAV_CACHE[
-            (user_id, code)
-        ] = nav.message_id
-
+    if sent == 0:
 
         print(
-            "PAGE SENT",
+            "NO MEDIA SENT",
             code,
-            page,
-            len(album)
-        )
-
-
-        return True
-
-
-
-    except Exception as e:
-
-        print(
-            "SEND PAGE ERROR",
-            e
+            page
         )
 
         return False
+
+
+
+    # =========================
+    # BUTTON
+    # =========================
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+
+            build_page_buttons(
+                code,
+                page,
+                total_page
+            ),
+
+            [
+                InlineKeyboardButton(
+                    text="📤 OPEN ALL",
+                    callback_data=f"all:{code}"
+                )
+            ]
+
+        ]
+    )
+
+
+    nav = await bot.send_message(
+        chat_id,
+        (
+            f"📦 PAGE {page}/{total_page}\n"
+            f"✅ {sent}/{len(chunk)} Media"
+        ),
+        reply_markup=keyboard
+    )
+
+
+    NAV_CACHE[
+        (user_id, code)
+    ] = nav.message_id
+
+
+    print(
+        "PAGE SENT",
+        code,
+        page,
+        sent
+    )
+
+
+    return True
 
 
 # =========================
@@ -356,6 +302,7 @@ async def page_handler(call: CallbackQuery):
 
     user_id = call.from_user.id
 
+
     try:
         await call.answer("📂 Loading...")
     except:
@@ -363,138 +310,25 @@ async def page_handler(call: CallbackQuery):
 
 
     try:
+
         _, code, page = call.data.split(":")
         page = int(page)
 
-    except:
-        return
+    except Exception:
+
+        return await call.answer(
+            "❌ Data halaman rusak",
+            show_alert=True
+        )
 
 
 
     async with USER_LOCK[user_id]:
 
-        pool = await get_pool()
-
-
-        file = await pool.fetchrow(
-            """
-            SELECT *
-            FROM files
-            WHERE code=$1
-            LIMIT 1
-            """,
-            code
-        )
-
-
-        if not file:
-
-            return await call.answer(
-                "❌ File tidak ditemukan",
-                show_alert=True
-            )
-
-
-
-        media = file["media"]
-
-        if isinstance(media, str):
-
-            try:
-                media = json.loads(media)
-
-            except:
-                media = []
-
-
-
-        if not media:
-
-            return await call.answer(
-                "❌ Media kosong",
-                show_alert=True
-            )
-
-
-
-        total_page = max(
-            1,
-            (len(media)+PAGE_SIZE-1)//PAGE_SIZE
-        )
-
-
-        if page > total_page:
-
-            return await call.answer(
-                "📄 Halaman habis",
-                show_alert=True
-            )
-
-
 
         # =========================
-        # ACCESS
+        # HAPUS NAV LAMA
         # =========================
-
-        access = False
-
-
-        # FREE
-        if not file["is_paid"]:
-            access = True
-
-
-        # OWNER
-        elif user_id == file["owner_id"]:
-            access = True
-
-
-        else:
-
-            bought = await pool.fetchval(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                    FROM file_purchases
-                    WHERE user_id=$1
-                    AND file_code=$2
-                    AND status='paid'
-                )
-                """,
-                user_id,
-                code
-            )
-
-
-            if bought:
-                access = True
-
-
-
-        if not access:
-
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text=f"💳 Bayar Rp {file['price']:,}".replace(",", "."),
-                            callback_data=f"pay:{code}"
-                        )
-                    ]
-                ]
-            )
-
-
-            return await call.message.answer(
-                "🔒 <b>FILE BERBAYAR</b>\n\n"
-                f"💰 Harga : Rp {file['price']:,}",
-                parse_mode="HTML",
-                reply_markup=kb
-            )
-
-
-
-        # hapus tombol lama
 
         old_nav = NAV_CACHE.get(
             (user_id, code)
@@ -514,23 +348,47 @@ async def page_handler(call: CallbackQuery):
                 pass
 
 
+            NAV_CACHE.pop(
+                (user_id, code),
+                None
+            )
 
-        # kirim halaman
 
-        await send_page(
-            call.bot,
-            call.message.chat.id,
-            user_id,
-            code,
-            page
+
+        # =========================
+        # SEND PAGE
+        # =========================
+
+        result = await send_page(
+            bot=call.bot,
+            chat_id=call.message.chat.id,
+            user_id=user_id,
+            code=code,
+            page=page
         )
+
+
+        if not result:
+
+            try:
+                await call.answer(
+                    "❌ Gagal membuka halaman",
+                    show_alert=True
+                )
+            except:
+                pass
 
 
 
 @router.callback_query(F.data=="end_page")
 async def end_page(call: CallbackQuery):
 
-    await call.answer(
-        "📄 Semua file sudah ditampilkan.",
-        show_alert=True
-    )
+    try:
+
+        await call.answer(
+            "📄 Semua file sudah ditampilkan.",
+            show_alert=True
+        )
+
+    except:
+        pass
