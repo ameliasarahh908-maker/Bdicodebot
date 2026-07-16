@@ -373,7 +373,8 @@ async def vvip_user(message: Message, state: FSMContext):
     kb.adjust(1)
 
     await message.answer(
-        "🎯 Pilih tipe membership:",
+        f"🎯 User: <code>{user['telegram_id']}</code>\n\nPilih tipe:",
+        parse_mode="HTML",
         reply_markup=kb.as_markup()
     )
 
@@ -399,7 +400,6 @@ async def set_type(call: CallbackQuery, state: FSMContext):
 # =========================
 # STEP 3: SET DAYS
 # =========================
-from datetime import timedelta
 
 @router.message(VvipState.waiting_days)
 async def set_membership_days(message: Message, state: FSMContext):
@@ -408,6 +408,11 @@ async def set_membership_days(message: Message, state: FSMContext):
         return await message.answer("❌ Harus angka (hari)")
 
     days = int(message.text)
+
+    # ✅ TARUH DI SINI
+    if days <= 0 or days > 365:
+        return await message.answer("❌ Maksimal 365 hari")
+
     data = await state.get_data()
 
     user_id = data.get("user_id")
@@ -425,7 +430,11 @@ async def set_membership_days(message: Message, state: FSMContext):
             UPDATE users
             SET 
                 vvip = TRUE,
-                vvip_until = NOW() + $2,
+                vvip_until = 
+                    CASE 
+                        WHEN vvip_until > NOW() THEN vvip_until + $2
+                        ELSE NOW() + $2
+                    END,
                 vip = FALSE,
                 vip_until = NULL
             WHERE telegram_id = $1
@@ -441,7 +450,11 @@ async def set_membership_days(message: Message, state: FSMContext):
             UPDATE users
             SET 
                 vip = TRUE,
-                vip_until = NOW() + $2,
+                vip_until = 
+                    CASE 
+                        WHEN vip_until > NOW() THEN vip_until + $2
+                        ELSE NOW() + $2
+                    END,
                 vvip = FALSE,
                 vvip_until = NULL
             WHERE telegram_id = $1
@@ -450,6 +463,14 @@ async def set_membership_days(message: Message, state: FSMContext):
             timedelta(days=days)
         )
         msg = f"🔥 VIP aktif {days} hari"
+
+    try:
+        await message.bot.send_message(
+            user_id,
+            f"🎉 Kamu mendapatkan {tipe.upper()} selama {days} hari!"
+        )
+    except:
+        pass
 
     await message.answer(msg)
     await state.clear()
