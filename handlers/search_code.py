@@ -91,7 +91,14 @@ async def search_process(
             code ILIKE $1
             OR title ILIKE $1
             OR category ILIKE $1
-        ORDER BY created_at DESC
+
+        ORDER BY
+            CASE
+                WHEN title ILIKE $1 THEN 1
+                ELSE 2
+            END,
+            created_at DESC
+
         LIMIT 20
         """,
         f"%{keyword}%"
@@ -104,7 +111,15 @@ async def search_process(
     if not files:
 
         return await message.answer(
-            "❌ Tidak ada file yang cocok."
+            "❌ <b>Judul belum tersedia</b>\n"
+            "━━━━━━━━━━━━━━━\n\n"
+            f"Keyword: <code>{keyword}</code>\n\n"
+            "💡 Tips:\n"
+            "• Gunakan kata yang lebih pendek\n"
+            "• Coba kategori (contoh: drakor, anime)\n"
+            "• Hindari typo\n\n"
+            "Coba lagi ya 🔎",
+            parse_mode="HTML"
         )
 
 
