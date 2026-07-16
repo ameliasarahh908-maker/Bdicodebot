@@ -1,13 +1,8 @@
 from datetime import datetime, timezone, timedelta
-
 from database import get_pool
 
 
-# =========================
-# GET USER STATUS
-# =========================
 async def get_user_status(pool, user_id: int) -> str:
-
     user = await pool.fetchrow(
         """
         SELECT
@@ -28,20 +23,14 @@ async def get_user_status(pool, user_id: int) -> str:
     if not user:
         return "free"
 
-
     now = datetime.now(timezone.utc)
 
-
-    # =========================
-    # VVIP ACTIVE
-    # =========================
     if (
         user["is_vvip"]
         and user["vvip_expired"]
         and user["vvip_expired"] > now
     ):
         return "vvip"
-
 
     if (
         user["vvip"]
@@ -50,17 +39,12 @@ async def get_user_status(pool, user_id: int) -> str:
     ):
         return "vvip"
 
-
-    # =========================
-    # VIP ACTIVE
-    # =========================
     if (
         user["is_vip"]
         and user["vip_expired"]
         and user["vip_expired"] > now
     ):
         return "vip"
-
 
     if (
         user["vip"]
@@ -69,10 +53,6 @@ async def get_user_status(pool, user_id: int) -> str:
     ):
         return "vip"
 
-
-    # =========================
-    # RESET EXPIRED
-    # =========================
     await pool.execute(
         """
         UPDATE users
@@ -80,24 +60,18 @@ async def get_user_status(pool, user_id: int) -> str:
             vip=false,
             vvip=false,
             is_vip=false,
-            is_vvip=false
+            is_vvip=false,
+            plan='free'
         WHERE telegram_id=$1
         """,
         user_id
     )
 
-
     return "free"
 
 
-
-# =========================
-# ACTIVATE VIP
-# =========================
 async def set_vip(user_id: int, days: int = 30):
-
     pool = await get_pool()
-
     now = datetime.now(timezone.utc)
 
     user = await pool.fetchrow(
@@ -109,24 +83,10 @@ async def set_vip(user_id: int, days: int = 30):
         user_id
     )
 
-
-    if (
-        user
-        and user["vip_until"]
-        and user["vip_until"] > now
-    ):
-        expired = (
-            user["vip_until"]
-            +
-            timedelta(days=days)
-        )
+    if user and user["vip_until"] and user["vip_until"] > now:
+        expired = user["vip_until"] + timedelta(days=days)
     else:
-        expired = (
-            now
-            +
-            timedelta(days=days)
-        )
-
+        expired = now + timedelta(days=days)
 
     await pool.execute(
         """
@@ -144,18 +104,11 @@ async def set_vip(user_id: int, days: int = 30):
         user_id
     )
 
-
     return expired
 
 
-
-# =========================
-# ACTIVATE VVIP
-# =========================
 async def set_vvip(user_id: int, days: int = 7):
-
     pool = await get_pool()
-
     now = datetime.now(timezone.utc)
 
     user = await pool.fetchrow(
@@ -167,25 +120,10 @@ async def set_vvip(user_id: int, days: int = 7):
         user_id
     )
 
-
-    if (
-        user
-        and user["vvip_expired"]
-        and user["vvip_expired"] > now
-    ):
-        expired = (
-            user["vvip_expired"]
-            +
-            timedelta(days=days)
-        )
-
+    if user and user["vvvip_expired"] and user["vvip_expired"] > now:
+        expired = user["vvip_expired"] + timedelta(days=days)
     else:
-        expired = (
-            now
-            +
-            timedelta(days=days)
-        )
-
+        expired = now + timedelta(days=days)
 
     await pool.execute(
         """
@@ -207,16 +145,10 @@ async def set_vvip(user_id: int, days: int = 7):
         user_id
     )
 
-
     return expired
 
 
-
-# =========================
-# SET FREE
-# =========================
 async def set_free(user_id: int):
-
     pool = await get_pool()
 
     await pool.execute(
@@ -239,12 +171,7 @@ async def set_free(user_id: int):
     )
 
 
-
-# =========================
-# CHECK VIP BOOLEAN
-# =========================
 async def is_vip(user_id: int):
-
     pool = await get_pool()
 
     status = await get_user_status(
@@ -252,18 +179,10 @@ async def is_vip(user_id: int):
         user_id
     )
 
-    return status in [
-        "vip",
-        "vvip"
-    ]
+    return status in ["vip","vvip"]
 
 
-
-# =========================
-# CHECK VVIP BOOLEAN
-# =========================
 async def is_vvip(user_id: int):
-
     pool = await get_pool()
 
     status = await get_user_status(
