@@ -698,8 +698,11 @@ async def media_page(call: CallbackQuery):
 @router.callback_query(F.data.startswith("sendpage:"))
 async def send_page(call: CallbackQuery):
 
-    _, invoice, page = call.data.split(":")
-    page = int(page)
+    try:
+        _, invoice, page = call.data.split(":")
+        page = int(page)
+    except:
+        return await call.answer("❌ Data callback rusak", show_alert=True)
 
     data = await safe_get(f"paidmedia:{invoice}")
 
@@ -708,11 +711,12 @@ async def send_page(call: CallbackQuery):
 
     try:
         media_list = json.loads(data)
-    except:
+    except Exception as e:
+        logger.error(f"JSON ERROR: {e}")
         return await call.answer("❌ Data rusak", show_alert=True)
 
     # =========================
-    # 🔥 FILTER DATA
+    # 🔥 FILTER VALID DATA
     # =========================
     media_list = [
         m for m in media_list
@@ -729,15 +733,10 @@ async def send_page(call: CallbackQuery):
     # =========================
     max_page = (total + PER_PAGE - 1) // PER_PAGE
 
-    if page > max_page:
-        page = max_page
-
-    if page < 1:
-        page = 1
+    page = max(1, min(page, max_page))
 
     start = (page - 1) * PER_PAGE
     end = start + PER_PAGE
-
     items = media_list[start:end]
 
     if not items:
@@ -746,21 +745,50 @@ async def send_page(call: CallbackQuery):
     sukses = 0
     gagal = 0
 
+    # =========================
+    # 🚀 SEND MEDIA
+    # =========================
     for item in items:
         try:
+            msg_id = item.get("message_id")
+
+            if not msg_id:
+                continue
+
+            # 🔥 FIX: pastikan integer
+            msg_id = int(msg_id)
+
             await call.bot.copy_message(
                 chat_id=call.message.chat.id,
                 from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=item["message_id"],
+                message_id=msg_id,
                 protect_content=True
             )
+
             sukses += 1
 
-        except Exception:
-            gagal += 1
-            logger.exception(f"SEND PAGE ERROR {item}")
+            # 🔥 FIX: anti rate limit
+            await asyncio.sleep(0.3)
 
-    text = f"📄 Halaman {page}\n✅ {sukses} terkirim"
+        except Exception as e:
+            gagal += 1
+            logger.error(f"SEND PAGE ERROR: {e} | ITEM: {item}")
+
+            # 🔥 fallback kalau copy gagal
+            try:
+                await call.bot.forward_message(
+                    chat_id=call.message.chat.id,
+                    from_chat_id=STORAGE_CHANNEL_ID,
+                    message_id=msg_id
+                )
+                sukses += 1
+            except Exception as e2:
+                logger.error(f"FORWARD FALLBACK ERROR: {e2}")
+
+    # =========================
+    # 🧾 RESULT MESSAGE
+    # =========================
+    text = f"📄 Halaman {page}/{max_page}\n✅ {sukses} terkirim"
 
     if gagal:
         text += f"\n❌ {gagal} gagal"
