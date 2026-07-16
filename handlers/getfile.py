@@ -160,5 +160,3 @@ async def auto_get_file(message:Message):
         message,
         code
     )
-        code
-    )
