@@ -16,12 +16,20 @@ from aiogram.types import (
 from utils.redis_client import safe_set, safe_get, safe_delete
 from database import fetchrow, execute
 from utils.bayargg import BayarGG
-from config import STORAGE_CHANNEL_ID
+from config import STORAGE_CHANNEL_ID, NOTIF_CHANNEL_ID
 
 
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+def mask_user_id(user_id: int) -> str:
+    uid = str(user_id)
+
+    if len(uid) <= 4:
+        return "****"
+
+    return uid[:2] + "****" + uid[-2:]
 
 PAY_LOCK_TTL = 30
 INVOICE_TTL = 3600
@@ -376,103 +384,48 @@ async def check_payment(call: CallbackQuery):
 
     invoice = call.data.split(":")[1]
 
-
     if invoice in CHECK_LOCK:
-        return await call.answer(
-            "⏳ Sedang diproses...",
-            show_alert=True
-        )
-
+        return await call.answer("⏳ Sedang diproses...", show_alert=True)
 
     CHECK_LOCK.add(invoice)
 
-
     try:
+        await call.answer("🔄 Mengecek pembayaran...")
 
-        await call.answer(
-            "🔄 Mengecek pembayaran..."
-        )
+        result = await BayarGG.check_payment(invoice)
 
-
-        result = await BayarGG.check_payment(
-            invoice
-        )
-
-
-        logger.info(
-            "CHECK RESULT %s",
-            result
-        )
-
+        logger.info("CHECK RESULT %s", result)
 
         if not result:
+            return await call.answer("❌ Gagal cek pembayaran", show_alert=True)
 
-            return await call.answer(
-                "❌ Gagal cek pembayaran",
-                show_alert=True
-            )
-
-
-        status = (
-            result.get("status")
-            or result.get("payment_status")
-        )
-
+        status = result.get("status") or result.get("payment_status")
 
         if status != "paid":
-
-            return await call.answer(
-                "⏳ Belum dibayar",
-                show_alert=True
-            )
-
-
+            return await call.answer("⏳ Belum dibayar", show_alert=True)
 
         purchase = await fetchrow(
-            """
-            SELECT *
-            FROM file_purchases
-            WHERE payment_id=$1
-            """,
+            "SELECT * FROM file_purchases WHERE payment_id=$1",
             invoice
         )
 
-
         if not purchase:
-
-            return await call.message.answer(
-                "❌ Data pembayaran tidak ditemukan"
-            )
-
-
+            return await call.message.answer("❌ Data pembayaran tidak ditemukan")
 
         if purchase["status"] == "paid":
-
-            return await call.answer(
-                "✅ File sudah dikirim",
-                show_alert=True
-            )
-
-
+            return await call.answer("✅ File sudah dikirim", show_alert=True)
 
         file = await fetchrow(
-            """
-            SELECT *
-            FROM files
-            WHERE code=$1
-            """,
+            "SELECT * FROM files WHERE code=$1",
             purchase["file_code"]
         )
 
-
         if not file:
+            return await call.message.answer("❌ File tidak ditemukan")
 
-            return await call.message.answer(
-                "❌ File tidak ditemukan"
-            )
-
-
-
+        # =========================
+        # 🔥 AMBIL & FILTER MEDIA
+        # =========================
         media_data = file["media"]
 
         if isinstance(media_data, str):
@@ -480,30 +433,55 @@ async def check_payment(call: CallbackQuery):
         else:
             media_list = media_data
 
+        media_list = [
+            m for m in media_list
+            if isinstance(m, dict) and m.get("message_id")
+        ]
 
         if not media_list:
-            return await call.message.answer(
-                "❌ Media kosong"
-            )
+            return await call.message.answer("❌ Media kosong")
 
-
+        # =========================
+        # 🔥 SAVE KE REDIS
+        # =========================
         await safe_set(
             f"paidmedia:{invoice}",
             json.dumps(media_list),
             ex=3600
         )
 
+        # =========================
+        # 🔥 UPDATE STATUS
+        # =========================
         await execute(
-            """
-            UPDATE file_purchases
-            SET status='paid'
-            WHERE payment_id=$1
-            """,
+            "UPDATE file_purchases SET status='paid' WHERE payment_id=$1",
             invoice
         )
 
+        # =========================
+        # 🔥 NOTIF CHANNEL (FIXED)
+        # =========================
+        try:
+            masked_id = mask_user_id(purchase["user_id"])
 
-        # Hapus QRIS jika pembayaran berhasil
+            text = (
+                "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
+                f"📁 Code: <code>{purchase['file_code']}</code>\n"
+                f"👤 Buyer: <code>{masked_id}</code>"
+            )
+
+            await call.bot.send_message(
+                chat_id=NOTIF_CHANNEL_ID,
+                text=text,
+                parse_mode="HTML"
+            )
+
+        except Exception:
+            logger.exception("NOTIF CHANNEL ERROR")
+
+        # =========================
+        # 🔥 HAPUS QR
+        # =========================
         try:
             if purchase["qr_message_id"] and purchase["qr_chat_id"]:
                 await call.bot.delete_message(
@@ -512,8 +490,12 @@ async def check_payment(call: CallbackQuery):
                 )
         except Exception:
             logger.exception("DELETE QR ERROR")
-        
+
+        # =========================
+        # 🔥 KIRIM MENU MEDIA
+        # =========================
         total = len(media_list)
+
         await call.message.answer(
             f"""
 🎉 <b>Pembayaran berhasil</b>
@@ -524,28 +506,17 @@ async def check_payment(call: CallbackQuery):
 Silahkan pilih:
 """,
             parse_mode="HTML",
-            reply_markup=media_keyboard(
-                invoice,
-                1,
-                total
-            )
+            reply_markup=media_keyboard(invoice, 1, total)
         )
-
 
     except Exception as e:
-
-        logger.exception(
-            "CHECK PAYMENT ERROR %s",
-            e
-        )
+        logger.exception("CHECK PAYMENT ERROR %s", e)
 
         await call.message.answer(
             "❌ Terjadi error saat proses pembayaran"
         )
 
-
     finally:
-
         CHECK_LOCK.discard(invoice)
 
 
@@ -696,11 +667,11 @@ async def send_page(call: CallbackQuery):
 
     try:
         media_list = json.loads(data)
-    except Exception:
-        return await call.answer("❌ Data media rusak", show_alert=True)
+    except:
+        return await call.answer("❌ Data rusak", show_alert=True)
 
     # =========================
-    # 🔥 FILTER DATA KOTOR
+    # 🔥 FILTER DATA
     # =========================
     media_list = [
         m for m in media_list
@@ -713,7 +684,7 @@ async def send_page(call: CallbackQuery):
         return await call.answer("❌ Media kosong", show_alert=True)
 
     # =========================
-    # 🔥 HITUNG PAGE VALID
+    # 🔥 PAGINATION SAFE
     # =========================
     max_page = (total + PER_PAGE - 1) // PER_PAGE
 
@@ -728,36 +699,26 @@ async def send_page(call: CallbackQuery):
 
     items = media_list[start:end]
 
-    # ❗ HANDLE PAGE KOSONG (penting)
     if not items:
-        return await call.answer(
-            "❌ Halaman ini kosong",
-            show_alert=True
-        )
+        return await call.answer("❌ Halaman kosong", show_alert=True)
 
     sukses = 0
     gagal = 0
 
     for item in items:
         try:
-            msg_id = item["message_id"]
-
             await call.bot.copy_message(
                 chat_id=call.message.chat.id,
                 from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id,
+                message_id=item["message_id"],
                 protect_content=True
             )
-
             sukses += 1
 
         except Exception:
             gagal += 1
-            logger.exception(f"SEND PAGE ERROR msg_id={item.get('message_id')}")
+            logger.exception(f"SEND PAGE ERROR {item}")
 
-    # =========================
-    # 🔥 FEEDBACK LEBIH JELAS
-    # =========================
     text = f"📄 Halaman {page}\n✅ {sukses} terkirim"
 
     if gagal:
@@ -765,11 +726,7 @@ async def send_page(call: CallbackQuery):
 
     await call.message.answer(
         text,
-        reply_markup=media_keyboard(
-            invoice,
-            page,
-            total
-        )
+        reply_markup=media_keyboard(invoice, page, total)
     )
 
     await call.answer()
