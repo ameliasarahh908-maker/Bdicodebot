@@ -1,3 +1,12 @@
+from aiogram import Router, types
+from aiogram.filters import Command
+
+from utils.user import set_vip, add_quota, get_quota
+
+# 🔥 WAJIB ADA DULU
+router = Router()
+
+
 @router.message(Command("testvip"))
 async def testvip(message: types.Message):
 
