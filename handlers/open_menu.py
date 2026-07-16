@@ -34,6 +34,12 @@ def open_keyboard(code):
 async def open_all(call: CallbackQuery):
     code = call.data.split(":")[1]
 
+    # ✅ jawab dulu biar ga expired
+    try:
+        await call.answer("⏳ Processing...")
+    except:
+        pass
+
     pool = await get_pool()
 
     file = await pool.fetchrow(
@@ -47,10 +53,11 @@ async def open_all(call: CallbackQuery):
     )
 
     if not file:
-        return await call.answer(
-            "❌ File tidak ditemukan",
-            show_alert=True
-        )
+        try:
+            await call.answer("❌ File tidak ditemukan", show_alert=True)
+        except:
+            pass
+        return
 
     await send_all(
         bot=call.bot,
@@ -58,5 +65,3 @@ async def open_all(call: CallbackQuery):
         code=code,
         file=file
     )
-
-    await call.answer()
