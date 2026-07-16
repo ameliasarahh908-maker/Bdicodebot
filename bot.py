@@ -84,7 +84,7 @@ dp.include_router(notify_router)
 
 # OPEN FILE MENU
 dp.include_router(open_menu_router)
-dp.include_router(test_router
+dp.include_router(test_router)
 
 # =========================
 # MAIN (ENTRY POINT)
