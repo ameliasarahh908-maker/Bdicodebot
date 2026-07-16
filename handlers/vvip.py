@@ -15,7 +15,8 @@ from database import get_pool
 from utils.bayargg import BayarGG
 from config_vip import VIP_PACKAGES
 from utils.safe_edit import safe_edit
-
+import pytz
+wib = pytz.timezone("Asia/Jakarta")
 
 router = Router()
 
@@ -84,7 +85,7 @@ async def vvip_menu(call: CallbackQuery):
 # =========================
 @router.callback_query(F.data.startswith("buyvip:"))
 async def buy_vip(call: CallbackQuery):
-    await call.answer()
+    await call.answer("⏳ Membuat invoice...")
 
     paket_id = call.data.split(":")[1]
 
@@ -96,19 +97,24 @@ async def buy_vip(call: CallbackQuery):
             show_alert=True
         )
 
-
-
     paket = VIP_PACKAGES[paket_id]
+    pool = await get_pool()
 
+    existing = await pool.fetchrow(
+        "SELECT * FROM payments WHERE user_id=$1 AND status='pending'",
+        call.from_user.id
+    )
 
+    if existing:
+        return await call.answer(
+            "⚠️ Kamu masih punya invoice belum dibayar",
+            show_alert=True
+        )
 
     await safe_edit(
         call.message,
         "⏳ Membuat invoice pembayaran...",
     )
-
-
-
     # =========================
     # CREATE PAYMENT
     # =========================
@@ -168,25 +174,19 @@ async def buy_vip(call: CallbackQuery):
 
     expires_at = None
 
-
-
     if payment.get("expires_at"):
-
         try:
-
             expires_at = datetime.fromisoformat(
                 payment["expires_at"]
             )
 
+            if expires_at.tzinfo is None:
+                expires_at = wib.localize(expires_at)
+            else:
+                expires_at = expires_at.astimezone(wib)
+
         except:
-
             pass
-
-
-
-
-    pool = await get_pool()
-
 
 
     # =========================
@@ -297,6 +297,11 @@ async def buy_vip(call: CallbackQuery):
         "Aktif otomatis setelah pembayaran berhasil."
 
     ).replace(",", ".")
+    if expires_at:
+        text += (
+            f"\n\n⏰ Expired: {expires_at.strftime('%H:%M:%S')}"
+            "\n⚠️ Invoice akan otomatis dibatalkan."
+        )
 
 
 
@@ -320,11 +325,17 @@ async def buy_vip(call: CallbackQuery):
 
 
     # =========================
+    # HAPUS MESSAGE LAMA
+    # =========================
+    try:
+        await call.message.delete()
+    except:
+        pass
+
+    # =========================
     # QR IMAGE
     # =========================
     if qr_string:
-
-
         qr = qrcode.make(
             qr_string
         )
@@ -374,15 +385,7 @@ async def buy_vip(call: CallbackQuery):
             reply_markup=kb.as_markup()
 
         )
-
-
-
-    await call.answer()
-
-
-
-
-
+        
 # =========================
 # WAITING PAYMENT
 # =========================
