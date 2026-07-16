@@ -242,7 +242,6 @@ async def receive_code(message: Message, state: FSMContext):
 
     has_access = bool(
         owner
-        or user_level in ["vip", "vvip"]
         or access
     )
 
@@ -338,7 +337,7 @@ async def open_file_by_code(
     # 🔥 USER LEVEL (NEW)
     # =========================
     user_level = await get_user_status(message.from_user.id)
-    file_type = file.get("type") or "free"
+    file_type = (file.get("type") or "free").lower()
 
 
     if not media:
@@ -405,7 +404,6 @@ async def open_file_by_code(
 
     has_access = bool(
         owner
-        or user_level in ["vip", "vvip"]
         or access
     )
 
