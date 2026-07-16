@@ -7,13 +7,12 @@ from aiogram import Router, F
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InputMediaPhoto,
-    InputMediaVideo,
-    InputMediaDocument
+    InlineKeyboardButton
 )
 
 from database import get_pool
+from config import STORAGE_CHANNEL_ID
+
 
 router = Router()
 
@@ -39,7 +38,7 @@ async def clear_cache_loop():
 
         now = time.time()
 
-        for cache in [PAGE_CACHE, PAGE_CHANGE, NAV_CACHE]:
+        for cache in [PAGE_CACHE, PAGE_CHANGE]:
 
             remove = []
 
@@ -47,7 +46,6 @@ async def clear_cache_loop():
 
                 if now - value[1] > 7200:
                     remove.append(key)
-
 
             for key in remove:
                 del cache[key]
@@ -72,51 +70,13 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         SELECT *
         FROM files
         WHERE code=$1
+        LIMIT 1
         """,
         code
     )
 
     if not file:
         print("FILE NOT FOUND")
-        return False
-
-
-    # =========================
-    # ACCESS CHECK
-    # =========================
-
-    bought = False
-
-    if not file["is_paid"]:
-        bought = True
-
-    elif user_id == file["owner_id"]:
-        bought = True
-
-    else:
-
-        bought = bool(
-            await pool.fetchval(
-                """
-                SELECT 1
-                FROM file_purchases
-                WHERE user_id=$1
-                AND file_code=$2
-                AND status='paid'
-                LIMIT 1
-                """,
-                user_id,
-                code
-            )
-        )
-
-
-    if not bought:
-        print(
-            "ACCESS DENIED",
-            user_id,
-            code
-        )
         return False
 
 
@@ -129,23 +89,19 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     if isinstance(media, str):
         try:
             media = json.loads(media)
-        except Exception as e:
-            print(
-                "MEDIA JSON ERROR",
-                e
-            )
+        except:
             return False
 
 
-    if not isinstance(media, list) or not media:
+    if not media:
         print("MEDIA EMPTY")
         return False
 
 
-    total_page = max(
-        1,
-        (len(media) + PAGE_SIZE - 1) // PAGE_SIZE
-    )
+
+    total_page = (
+        len(media) + PAGE_SIZE - 1
+    ) // PAGE_SIZE
 
 
     page = max(
@@ -155,31 +111,14 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
     chunk = media[
-        (page - 1) * PAGE_SIZE:
-        page * PAGE_SIZE
+        (page-1)*PAGE_SIZE :
+        page*PAGE_SIZE
     ]
 
 
     if not chunk:
-        print("PAGE EMPTY")
         return False
 
-
-
-    # =========================
-    # COUNTER
-    # =========================
-
-    if page == 1:
-
-        await pool.execute(
-            """
-            UPDATE files
-            SET download_count = download_count + 1
-            WHERE code=$1
-            """,
-            code
-        )
 
 
     share_media = file["share_media"]
@@ -192,8 +131,11 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
 
+    album = []
+
+
     caption = (
-        "𝗘𝗔𝗥𝗡𝗙𝗜𝗟𝗘𝗕𝗢𝗫\n"
+        "ZyxFidxBot\n"
         "━━━━━━━━━━━━━━━\n\n"
         f"🔑 CODE : {code}\n"
         f"📦 PAGE : {page}/{total_page}\n"
@@ -202,63 +144,95 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
     # =========================
-    # SEND PAGE VIA STORAGE
+    # BUILD ALBUM 10 MEDIA
     # =========================
+
+    for index, item in enumerate(chunk):
+
+        if not isinstance(item, dict):
+            continue
+
+
+        fid = item.get("file_id")
+
+        if not fid:
+            continue
+
+
+        ftype = (
+            item.get("type")
+            or "document"
+        ).lower()
+
+
+        cap = caption if index == 0 else None
+
+
+        if ftype in ("photo","image"):
+
+            album.append(
+                InputMediaPhoto(
+                    media=fid,
+                    caption=cap
+                )
+            )
+
+
+        elif ftype == "video":
+
+            album.append(
+                InputMediaVideo(
+                    media=fid,
+                    caption=cap
+                )
+            )
+
+
+        else:
+
+            album.append(
+                InputMediaDocument(
+                    media=fid,
+                    caption=cap
+                )
+            )
+
+
+    if not album:
+        print("ALBUM EMPTY")
+        return False
+
+
 
     try:
 
-        sent = 0
+        # =========================
+        # SEND 1 BUBBLE
+        # =========================
 
+        if len(album) == 1:
 
-        for index, item in enumerate(chunk):
+            item = album[0]
 
-            if not isinstance(item, dict):
-                continue
-
-
-            message_id = item.get(
-                "message_id"
+            await bot.send_document(
+                chat_id,
+                item.media,
+                caption=caption,
+                protect_content=protect
             )
 
 
-            if not message_id:
-                continue
+        else:
 
-
-            try:
-
-                await bot.copy_message(
-                    chat_id=chat_id,
-                    from_chat_id=STORAGE_CHANNEL_ID,
-                    message_id=message_id,
-                    protect_content=protect
-                )
-
-                sent += 1
-
-
-            except Exception as e:
-
-                print(
-                    "COPY MEDIA ERROR",
-                    message_id,
-                    e
-                )
-
-
-
-        if sent == 0:
-
-            print(
-                "NO MEDIA SENT"
+            await bot.send_media_group(
+                chat_id,
+                album
             )
-
-            return False
 
 
 
         # =========================
-        # NAV BUTTON
+        # PAGE BUTTON
         # =========================
 
         keyboard = InlineKeyboardMarkup(
@@ -275,44 +249,29 @@ async def send_page(bot, chat_id, user_id, code, page=1):
                         text="📤 OPEN ALL",
                         callback_data=f"all:{code}"
                     )
-                ],
-
-                [
-                    InlineKeyboardButton(
-                        text="📢 Channel Update",
-                        url="https://t.me/+F6-XB1gFA9VhMDc1"
-                    ),
-
-                    InlineKeyboardButton(
-                        text="🔔 Notifikasi Code",
-                        url="https://t.me/+T8c4gdEWf843ZWQ1"
-                    )
                 ]
+
             ]
         )
 
 
-        nav_msg = await bot.send_message(
+        nav = await bot.send_message(
             chat_id,
-            (
-                f"📦 NAVIGATION\n"
-                f"Page {page}/{total_page}"
-            ),
+            f"📦 PAGE {page}/{total_page}",
             reply_markup=keyboard
         )
 
 
         NAV_CACHE[
             (user_id, code)
-        ] = nav_msg.message_id
-
+        ] = nav.message_id
 
 
         print(
-            "SEND PAGE SUCCESS",
+            "PAGE SENT",
             code,
             page,
-            sent
+            len(album)
         )
 
 
@@ -324,7 +283,7 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
         print(
             "SEND PAGE ERROR",
-            repr(e)
+            e
         )
 
         return False
