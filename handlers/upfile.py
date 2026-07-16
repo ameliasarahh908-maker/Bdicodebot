@@ -226,7 +226,7 @@ async def receive_media(message: Message, state: FSMContext):
             file_size = message.photo[-1].file_size or 0
 
         if any(
-            x["message_id"] == storage_message_id
+            x.get("message_id") == storage_message_id
             for x in media
         ):
             return
@@ -551,6 +551,12 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
     try:
         media = data.get("media", [])
 
+        # FILTER MEDIA INVALID
+        media = [
+            m for m in media
+            if m.get("message_id")
+        ]
+
         if not media:
             await state.update_data(saving=False)
             return await message.answer("❌ No media found")
@@ -640,6 +646,25 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             0,
             0
         )
+
+
+        # =========================
+        # SIMPAN KE TABEL MEDIAS
+        # =========================
+        for m in media:
+            if not m.get("message_id"):
+                continue
+
+            await pool.execute(
+                """
+                INSERT INTO medias (code, message_id, file_type)
+                VALUES ($1, $2, $3)
+                ON CONFLICT DO NOTHING
+                """,
+                code,
+                m.get("message_id"),
+                m.get("type")
+            )
 
         await state.clear()
 
