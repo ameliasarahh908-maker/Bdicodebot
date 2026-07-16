@@ -1,6 +1,5 @@
 import json
-import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 from utils.redis_client import safe_get, safe_set
 from database import get_pool
@@ -8,9 +7,9 @@ from database import get_pool
 
 def default_user():
     return {
-        "level":"free",
-        "expired_at":0,
-        "paid_quota":0
+        "level": "free",
+        "expired_at": 0,
+        "paid_quota": 0
     }
 
 
@@ -20,12 +19,12 @@ async def get_user_data(user_id:int):
     if not data:
         return default_user()
 
-    if isinstance(data,bytes):
-        data=data.decode()
+    if isinstance(data, bytes):
+        data = data.decode()
 
     try:
         return json.loads(data)
-    except:
+    except Exception:
         return default_user()
 
 
@@ -36,8 +35,18 @@ async def save_user_data(user_id:int,data:dict):
     )
 
 
+def fix_datetime(dt):
+    if not dt:
+        return None
+
+    # postgres timestamp tanpa timezone
+    # jadikan naive juga
+    return dt.replace(tzinfo=None)
+
+
+
 # =========================
-# USER STATUS DATABASE
+# GET USER STATUS
 # =========================
 async def get_user_status(pool,user_id:int):
 
@@ -62,40 +71,59 @@ async def get_user_status(pool,user_id:int):
         return "free"
 
 
-    now=datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
+
+    vip_until = fix_datetime(user["vip_until"])
+    vvip_until = fix_datetime(user["vvip_until"])
+    vip_expired = fix_datetime(user["vip_expired"])
+    vvip_expired = fix_datetime(user["vvip_expired"])
+
+
+
+    # =========================
+    # VVIP
+    # =========================
 
     if (
         user["is_vvip"]
-        and user["vvip_expired"]
-        and user["vvvip_expired"] > now
+        and vvip_expired
+        and vvip_expired > now
     ):
         return "vvip"
 
 
     if (
         user["vvip"]
-        and user["vvip_until"]
-        and user["vvip_until"] > now
+        and vvip_until
+        and vvip_until > now
     ):
         return "vvip"
 
 
+
+    # =========================
+    # VIP
+    # =========================
+
     if (
         user["is_vip"]
-        and user["vip_expired"]
-        and user["vip_expired"] > now
+        and vip_expired
+        and vip_expired > now
     ):
         return "vip"
 
 
     if (
         user["vip"]
-        and user["vip_until"]
-        and user["vip_until"] > now
+        and vip_until
+        and vip_until > now
     ):
         return "vip"
 
+
+
+    # expired reset
 
     await pool.execute(
         """
@@ -104,26 +132,31 @@ async def get_user_status(pool,user_id:int):
             vip=false,
             vvip=false,
             is_vip=false,
-            is_vvip=false
+            is_vvip=false,
+            plan='free'
         WHERE telegram_id=$1
         """,
         user_id
     )
 
+
     return "free"
+
 
 
 
 # =========================
 # SET VIP
 # =========================
+
 async def set_vip(user_id:int,days:int=30):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    now=datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
-    user=await pool.fetchrow(
+
+    user = await pool.fetchrow(
         """
         SELECT vip_until
         FROM users
@@ -133,10 +166,16 @@ async def set_vip(user_id:int,days:int=30):
     )
 
 
-    if user and user["vip_until"] and user["vip_until"]>now:
-        expired=user["vip_until"]+timedelta(days=days)
+    old = fix_datetime(
+        user["vip_until"]
+    ) if user else None
+
+
+    if old and old > now:
+        expired = old + timedelta(days=days)
     else:
-        expired=now+timedelta(days=days)
+        expired = now + timedelta(days=days)
+
 
 
     await pool.execute(
@@ -155,21 +194,24 @@ async def set_vip(user_id:int,days:int=30):
         user_id
     )
 
+
     return expired
+
 
 
 
 # =========================
 # SET VVIP
 # =========================
+
 async def set_vvip(user_id:int,days:int=7):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    now=datetime.now(timezone.utc)
+    now = datetime.utcnow()
 
 
-    user=await pool.fetchrow(
+    user = await pool.fetchrow(
         """
         SELECT vvip_expired
         FROM users
@@ -179,10 +221,17 @@ async def set_vvip(user_id:int,days:int=7):
     )
 
 
-    if user and user["vvvip_expired"] and user["vvip_expired"]>now:
-        expired=user["vvip_expired"]+timedelta(days=days)
+    old = fix_datetime(
+        user["vvip_expired"]
+    ) if user else None
+
+
+
+    if old and old > now:
+        expired = old + timedelta(days=days)
     else:
-        expired=now+timedelta(days=days)
+        expired = now + timedelta(days=days)
+
 
 
     await pool.execute(
@@ -213,12 +262,14 @@ async def set_vvip(user_id:int,days:int=7):
 
 
 
+
 # =========================
-# FREE
+# SET FREE
 # =========================
+
 async def set_free(user_id:int):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
     await pool.execute(
         """
@@ -240,44 +291,56 @@ async def set_free(user_id:int):
     )
 
 
+
+
+
 # =========================
 # CHECK
 # =========================
+
 async def is_vip(user_id:int):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    status=await get_user_status(
+    status = await get_user_status(
         pool,
         user_id
     )
 
-    return status in ["vip","vvip"]
+    return status in [
+        "vip",
+        "vvip"
+    ]
+
 
 
 async def is_vvip(user_id:int):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    status=await get_user_status(
+    status = await get_user_status(
         pool,
         user_id
     )
 
-    return status=="vvip"
+    return status == "vvip"
+
+
 
 
 
 # =========================
 # QUOTA REDIS
 # =========================
+
 async def add_quota(user_id:int,amount:int):
 
-    data=await get_user_data(user_id)
+    data = await get_user_data(user_id)
 
-    data["paid_quota"]=data.get(
-        "paid_quota",0
-    )+amount
+    data["paid_quota"] = data.get(
+        "paid_quota",
+        0
+    ) + amount
 
     await save_user_data(
         user_id,
@@ -285,9 +348,10 @@ async def add_quota(user_id:int,amount:int):
     )
 
 
+
 async def get_quota(user_id:int):
 
-    data=await get_user_data(user_id)
+    data = await get_user_data(user_id)
 
     return data.get(
         "paid_quota",
@@ -295,18 +359,19 @@ async def get_quota(user_id:int):
     )
 
 
+
 async def use_quota(user_id:int):
 
-    data=await get_user_data(user_id)
+    data = await get_user_data(user_id)
 
-    quota=data.get(
+    quota = data.get(
         "paid_quota",
         0
     )
 
-    if quota>0:
+    if quota > 0:
 
-        data["paid_quota"]=quota-1
+        data["paid_quota"] = quota - 1
 
         await save_user_data(
             user_id,
@@ -314,5 +379,6 @@ async def use_quota(user_id:int):
         )
 
         return True
+
 
     return False
