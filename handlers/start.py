@@ -17,10 +17,6 @@ from datetime import datetime
 
 router = Router()
 
-
-# =========================
-# START
-# =========================
 # =========================
 # START
 # =========================
@@ -121,7 +117,9 @@ async def process_start(message, loading, user_id, username):
 
     pool = await get_pool()
 
+    # =========================
     # CREATE / UPDATE USER
+    # =========================
     await pool.execute(
         """
         INSERT INTO users (telegram_id, username, chat_id, balance, language)
@@ -136,16 +134,59 @@ async def process_start(message, loading, user_id, username):
         message.chat.id
     )
 
+    # =========================
+    # 🔥 REFERRAL SYSTEM
+    # =========================
+    args = message.text.split(maxsplit=1)
+
+    if len(args) > 1:
+        ref_id = args[1].strip()
+
+        if ref_id.isdigit() and int(ref_id) != user_id:
+
+            # cek apakah user sudah pernah direfer
+            existing = await pool.fetchval(
+                "SELECT referred_by FROM users WHERE telegram_id=$1",
+                user_id
+            )
+
+            if not existing:
+
+                # simpan siapa yang ngundang
+                await pool.execute(
+                    "UPDATE users SET referred_by=$1 WHERE telegram_id=$2",
+                    int(ref_id),
+                    user_id
+                )
+
+                # tambah referral ke pengundang
+                await pool.execute(
+                    """
+                    UPDATE users
+                    SET referral_count = COALESCE(referral_count, 0) + 1
+                    WHERE telegram_id=$1
+                    """,
+                    int(ref_id)
+                )
+
+                print(f"✅ Referral masuk ke {ref_id}")
+
+    # =========================
     # GET USER
+    # =========================
     user = await pool.fetchrow(
         "SELECT username, language FROM users WHERE telegram_id=$1",
         user_id
     )
 
+    # =========================
     # GET STATUS
+    # =========================
     status = await get_user_status(pool, user_id)
 
+    # =========================
     # FIRST TIME LANGUAGE
+    # =========================
     if not user["language"]:
         await loading.edit_text(
             "*𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓*\n\n"
@@ -156,7 +197,9 @@ async def process_start(message, loading, user_id, username):
         )
         return
 
+    # =========================
     # OPEN HOME
+    # =========================
     await render_home_fast(
         bot,
         loading,
@@ -164,81 +207,6 @@ async def process_start(message, loading, user_id, username):
         user["username"] or "unknown",
         status
     )
-
-
-# =========================
-# GET STATUS FUNCTION
-# =========================
-async def get_user_status(pool, user_id):
-
-    vip_data = await pool.fetchrow(
-        "SELECT vip, vvip, vip_until, vvip_until FROM users WHERE telegram_id=$1",
-        user_id
-    )
-
-    import pytz
-    wib = pytz.timezone("Asia/Jakarta")
-    now = datetime.now(wib)
-
-    if not vip_data:
-        return "🆓 FREE"
-
-    # =========================
-    # FIX TIMEZONE
-    # =========================
-    vvip_until = vip_data["vvip_until"]
-    vip_until = vip_data["vip_until"]
-
-    if vvip_until and vvip_until.tzinfo is None:
-        vvip_until = wib.localize(vvip_until)
-
-    if vip_until and vip_until.tzinfo is None:
-        vip_until = wib.localize(vip_until)
-
-    # =========================
-    # PRIORITY CHECK
-    # =========================
-    if vip_data["vvip"] and vvip_until and vvip_until > now:
-        return "👑 VVIP"
-
-    if vip_data["vip"] and vip_until and vip_until > now:
-        return "🔥 VIP"
-
-    return "🆓 FREE"
-
-
-# =========================
-# SET LANGUAGE
-# =========================
-@router.callback_query(F.data.startswith("setlang:"))
-async def set_language(call: CallbackQuery):
-
-    lang = call.data.split(":")[1]
-    pool = await get_pool()
-
-    await pool.execute(
-        "UPDATE users SET language=$1 WHERE telegram_id=$2",
-        lang,
-        call.from_user.id
-    )
-
-    await call.message.edit_text(
-        translate(lang, "welcome"),
-        parse_mode="Markdown"
-    )
-
-    # reload status
-    status = await get_user_status(pool, call.from_user.id)
-
-    await render_home_fast(
-        call.bot,
-        call.message,
-        call.from_user.id,
-        call.from_user.username or "unknown",
-        status
-    )
-
-    await call.answer()
 
 
 # =========================
