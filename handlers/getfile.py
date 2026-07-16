@@ -185,7 +185,7 @@ async def receive_code(message: Message, state: FSMContext):
     # =========================
     # 🔥 USER LEVEL (NEW)
     # =========================
-    user_level = await get_user_status(message.from_user.id)
+    user_level = await get_user_status(pool, message.from_user.id)
 
  
     if not media:
@@ -320,7 +320,7 @@ async def open_file_by_code(
     # =========================
     # 🔥 USER LEVEL (NEW)
     # =========================
-    user_level = await get_user_status(message.from_user.id)
+    user_level = await get_user_status(pool, message.from_user.id)
 
     if not media:
         return await message.answer(
