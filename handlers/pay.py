@@ -16,6 +16,7 @@ from aiogram.types import (
 from utils.redis_client import safe_set, safe_get, safe_delete
 from database import fetchrow, execute
 from utils.bayargg import BayarGG
+from config import STORAGE_CHANNEL_ID
 
 
 logger = logging.getLogger(__name__)
@@ -688,15 +689,10 @@ async def send_page(call: CallbackQuery):
     _, invoice, page = call.data.split(":")
     page = int(page)
 
-    data = await safe_get(
-        f"paidmedia:{invoice}"
-    )
+    data = await safe_get(f"paidmedia:{invoice}")
 
     if not data:
-        return await call.answer(
-            "Session habis",
-            show_alert=True
-        )
+        return await call.answer("Session habis", show_alert=True)
 
     media_list = json.loads(data)
 
@@ -705,154 +701,78 @@ async def send_page(call: CallbackQuery):
 
     items = media_list[start:end]
 
-
-    from aiogram.types import (
-        InputMediaPhoto,
-        InputMediaVideo,
-        InputMediaDocument
-    )
-
-
-    group = []
-
+    sukses = 0
 
     for item in items:
+        try:
+            msg_id = item.get("message_id")
 
-        fid = item.get("file_id")
-        ftype = (item.get("type") or "").lower()
+            if not msg_id:
+                continue
 
-
-        if ftype == "photo":
-
-            group.append(
-                InputMediaPhoto(
-                    media=fid
-                )
-            )
-
-
-        elif ftype == "video":
-
-            group.append(
-                InputMediaVideo(
-                    media=fid
-                )
-            )
-
-
-        elif ftype == "document":
-
-            group.append(
-                InputMediaDocument(
-                    media=fid
-                )
-            )
-
-
-    try:
-
-        if group:
-
-            await call.message.answer_media_group(
-                media=group,
+            await call.bot.copy_message(
+                chat_id=call.message.chat.id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=msg_id,
                 protect_content=True
             )
 
+            sukses += 1
 
-        await call.answer(
-            f"✅ Halaman {page} terkirim ({len(group)} media)"
-        )
+        except Exception:
+            logger.exception("SEND PAGE ERROR")
 
-
-    except Exception:
-
-        logger.exception(
-            "SEND PAGE GROUP ERROR"
-        )
-
-        await call.answer(
-            "❌ Gagal kirim media",
-            show_alert=True
-        )
+    await call.answer(f"✅ Halaman {page} terkirim ({sukses} media)")
 
 @router.callback_query(F.data.startswith("sendall:"))
 async def send_all(call:CallbackQuery):
 
     invoice=call.data.split(":")[1]
 
-
-    data=await safe_get(
-        f"paidmedia:{invoice}"
-    )
-
+    data=await safe_get(f"paidmedia:{invoice}")
 
     if not data:
-        return await call.answer(
-            "Session habis",
-            show_alert=True
-        )
-
+        return await call.answer("Session habis", show_alert=True)
 
     media_list=json.loads(data)
 
-
-    await call.message.answer(
+    status = await call.message.answer(
         f"📦 Mengirim {len(media_list)} file..."
     )
 
-
     sukses=0
 
-
-    for item in media_list:
-
+    for i,item in enumerate(media_list, start=1):
         try:
+            msg_id = item.get("message_id")
 
-            fid=item["file_id"]
-            ftype=item["type"]
+            if not msg_id:
+                continue
 
-
-            if ftype=="video":
-
-                await call.message.answer_video(
-                    fid,
-                    protect_content=True
-                )
-
-            elif ftype=="photo":
-
-                await call.message.answer_photo(
-                    fid,
-                    protect_content=True
-                )
-
-            elif ftype=="document":
-
-                await call.message.answer_document(
-                    fid,
-                    protect_content=True
-                )
-
+            await call.bot.copy_message(
+                chat_id=call.message.chat.id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=msg_id,
+                protect_content=True
+            )
 
             sukses+=1
 
-            await asyncio.sleep(1.5)
+            if i % 10 == 0:
+                try:
+                    await status.edit_text(
+                        f"📦 Mengirim...\n{sukses}/{len(media_list)}"
+                    )
+                except:
+                    pass
 
+            await asyncio.sleep(0.7)
 
         except Exception:
+            logger.exception("SEND ALL ERROR")
 
-            logger.exception(
-                "SEND ALL ERROR"
-            )
-
-
-    await call.message.answer(
-        f"""
-✅ Semua selesai
-
-📦 Terkirim:
-{sukses}/{len(media_list)}
-"""
+    await status.edit_text(
+        f"✅ Selesai\n{sukses}/{len(media_list)} media terkirim"
     )
 
 @router.callback_query(F.data=="none")
