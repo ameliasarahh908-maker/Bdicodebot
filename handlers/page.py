@@ -446,21 +446,25 @@ async def page_handler(call: CallbackQuery):
 
     user_id = call.from_user.id
 
+    # ✅ JAWAB DULU (WAJIB)
+    try:
+        await call.answer("📂 Loading...")
+    except:
+        pass
+
     try:
         _, code, page = call.data.split(":")
         page = int(page)
 
     except:
-        return await call.answer(
-            "❌ Invalid data",
-            show_alert=True
-        )
-
+        try:
+            await call.answer("❌ Invalid data", show_alert=True)
+        except:
+            pass
+        return
 
     now = time.time()
-
     key = (user_id, code)
-
 
     # =========================
     # SAME PAGE COOLDOWN
@@ -468,21 +472,21 @@ async def page_handler(call: CallbackQuery):
     last = PAGE_CACHE.get(key)
 
     if last:
-
         last_page, last_time = last
 
         if last_page == page:
-
             sisa = SAME_PAGE_COOLDOWN - (now - last_time)
 
             if sisa > 0:
-
-                return await call.answer(
-                    f"⏳ Halaman ini sudah dibuka.\n"
-                    f"Coba lagi {int(sisa)} detik.",
-                    show_alert=True
-                )
-
+                try:
+                    await call.answer(
+                        f"⏳ Halaman ini sudah dibuka.\n"
+                        f"Coba lagi {int(sisa)} detik.",
+                        show_alert=True
+                    )
+                except:
+                    pass
+                return
 
     # =========================
     # CHANGE PAGE COOLDOWN
@@ -490,30 +494,27 @@ async def page_handler(call: CallbackQuery):
     change = PAGE_CHANGE.get(key)
 
     if change:
-
         old_page, old_time = change
 
         if old_page != page:
-
             sisa = CHANGE_PAGE_COOLDOWN - (now - old_time)
 
             if sisa > 0:
-
-                return await call.answer(
-                    f"⏳ Tunggu {int(sisa)} detik sebelum pindah halaman.",
-                    show_alert=True
-                )
-
+                try:
+                    await call.answer(
+                        f"⏳ Tunggu {int(sisa)} detik sebelum pindah halaman.",
+                        show_alert=True
+                    )
+                except:
+                    pass
+                return
 
     PAGE_CACHE[key] = (page, now)
     PAGE_CHANGE[key] = (page, now)
 
-
-
     async with USER_LOCK[user_id]:
 
         pool = await get_pool()
-
 
         file = await pool.fetchrow(
             """
@@ -524,65 +525,43 @@ async def page_handler(call: CallbackQuery):
             code
         )
 
-
         if not file:
-
-            return await call.answer(
-                "❌ File tidak ditemukan",
-                show_alert=True
-            )
-
-
-
-        # =========================
-        # CEK BATAS HALAMAN
-        # =========================
+            try:
+                await call.answer("❌ File tidak ditemukan", show_alert=True)
+            except:
+                pass
+            return
 
         media = file["media"]
 
         if isinstance(media, str):
-
             media = json.loads(media)
-
 
         total_page = max(
             1,
             (len(media) + PAGE_SIZE - 1) // PAGE_SIZE
         )
 
-
         if page > total_page:
-
-            return await call.answer(
-                "📄 Halaman sudah habis.",
-                show_alert=True
-            )
-
-
+            try:
+                await call.answer("📄 Halaman sudah habis.", show_alert=True)
+            except:
+                pass
+            return
 
         # =========================
-        # ACCESS CHECK
+        # ACCESS CHECK (TETAP)
         # =========================
-
         bought = False
 
-
         if not file["is_paid"]:
-
             bought = True
-
-
         elif user_id == file["owner_id"]:
-
             bought = True
-
-
         else:
-
             vip = await pool.fetchval(
                 """
-                SELECT 1
-                FROM users
+                SELECT 1 FROM users
                 WHERE telegram_id=$1
                 AND vip=TRUE
                 AND vip_until > NOW()
@@ -590,19 +569,13 @@ async def page_handler(call: CallbackQuery):
                 user_id
             )
 
-
             if vip:
-
                 bought = True
-
-
             else:
-
                 bought = bool(
                     await pool.fetchval(
                         """
-                        SELECT 1
-                        FROM file_purchases
+                        SELECT 1 FROM file_purchases
                         WHERE user_id=$1
                         AND file_code=$2
                         AND status='paid'
@@ -613,10 +586,7 @@ async def page_handler(call: CallbackQuery):
                     )
                 )
 
-
-
         if not bought:
-
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[
                     [
@@ -628,7 +598,6 @@ async def page_handler(call: CallbackQuery):
                 ]
             )
 
-
             await call.message.answer(
                 "🔒 <b>FILE BERBAYAR</b>\n\n"
                 f"💰 Harga : Rp {file['price']:,}\n\n"
@@ -636,9 +605,7 @@ async def page_handler(call: CallbackQuery):
                 parse_mode="HTML",
                 reply_markup=kb
             )
-
-
-            return await call.answer()
+            return
 
         old_nav = NAV_CACHE.get((user_id, code))
 
@@ -659,9 +626,6 @@ async def page_handler(call: CallbackQuery):
             code,
             page
         )
-
-
-        await call.answer()
 
 @router.callback_query(F.data == "end_page")
 async def end_page(call: CallbackQuery):
