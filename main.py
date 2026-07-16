@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from utils.redis import init_redis
+from utils.redis_client import init_redis
 
 from config import TIMEZONE
 from bot import bot, dp
