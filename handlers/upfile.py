@@ -25,15 +25,14 @@ router = Router()
 MAX_MEDIA = 200
 UPDATE_DELAY = 0.3
 
-from weakref import WeakValueDictionary
-
 _last_update: Dict[int, float] = {}
-_user_locks = WeakValueDictionary()
+_user_locks: Dict[int, asyncio.Lock] = {}
 
 
 def get_lock(user_id: int):
     if user_id not in _user_locks:
         _user_locks[user_id] = asyncio.Lock()
+
     return _user_locks[user_id]
 
 
