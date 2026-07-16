@@ -187,10 +187,7 @@ async def receive_code(message: Message, state: FSMContext):
     # =========================
     user_level = await get_user_status(message.from_user.id)
 
-    # default type kalau belum ada
-    file_type = (file.get("type") or "free").lower()
-
-
+ 
     if not media:
 
         await message.answer(
@@ -199,23 +196,6 @@ async def receive_code(message: Message, state: FSMContext):
 
         await state.clear()
         return
-
-
-
-    # =========================
-    # 🔒 VIP / VVIP ACCESS
-    # =========================
-    if file_type == "vip":
-        if user_level not in ["vip", "vvip"]:
-            await message.answer("🔒 File ini khusus VIP")
-            await state.clear()
-            return
-
-    elif file_type == "vvip":
-        if user_level != "vvip":
-            await message.answer("👑 File ini khusus VVIP")
-            await state.clear()
-            return
 
     is_paid = file["is_paid"] or False
     price = file["price"] or 0
@@ -243,6 +223,7 @@ async def receive_code(message: Message, state: FSMContext):
     has_access = bool(
         owner
         or access
+        or user_level in ["vip", "vvip"]
     )
 
 
@@ -337,8 +318,6 @@ async def open_file_by_code(
     # 🔥 USER LEVEL (NEW)
     # =========================
     user_level = await get_user_status(message.from_user.id)
-    file_type = (file.get("type") or "free").lower()
-
 
     if not media:
         return await message.answer(
@@ -368,18 +347,6 @@ async def open_file_by_code(
                 "❌ File sudah kadaluarsa."
             )
 
-
-    # =========================
-    # 🔒 VIP / VVIP ACCESS
-    # =========================
-    if file_type == "vip":
-        if user_level not in ["vip", "vvip"]:
-            return await message.answer("🔒 File ini khusus VIP")
-
-    elif file_type == "vvip":
-        if user_level != "vvip":
-            return await message.answer("👑 File ini khusus VVIP")
-
     is_paid = file["is_paid"] or False
     price = file["price"] or 0
 
@@ -405,6 +372,7 @@ async def open_file_by_code(
     has_access = bool(
         owner
         or access
+        or user_level in ["vip", "vvip"]
     )
 
 
