@@ -53,7 +53,7 @@ from handlers.withdraw import (
 from handlers.admin import router as admin_router
 from handlers.notify import router as notify_router
 from handlers.open_menu import router as open_menu_router
-
+from handlers.test import router as test_router
 
 # =========================
 # REGISTER ROUTERS
@@ -84,7 +84,7 @@ dp.include_router(notify_router)
 
 # OPEN FILE MENU
 dp.include_router(open_menu_router)
-
+dp.include_router(test_router
 
 # =========================
 # MAIN (ENTRY POINT)
