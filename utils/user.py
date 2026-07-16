@@ -1,6 +1,6 @@
 import time
 import json
-from utils.redis import safe_get, safe_set
+from utils.redis_client import safe_get, safe_set
 
 
 # 🔍 Ambil status user + auto handle expired
