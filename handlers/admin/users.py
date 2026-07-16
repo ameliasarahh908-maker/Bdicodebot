@@ -33,6 +33,7 @@ class UnbanUserState(StatesGroup):
 
 class VvipState(StatesGroup):
     waiting_user = State()
+    waiting_type = State()   # ⬅️ TAMBAHAN
     waiting_days = State()
 
 
@@ -316,15 +317,28 @@ async def unban_user(message: Message, state: FSMContext):
 @router.callback_query(F.data == "users_vvip")
 async def vvip_start(call: CallbackQuery, state: FSMContext):
 
+    if not is_admin(call.from_user.id):
+        return await call.answer("No access", show_alert=True)
+
     await state.clear()
     await state.set_state(VvipState.waiting_user)
 
-    await call.message.edit_text("👑 Kirim user ID / username")
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⬅ Kembali", callback_data="admin_users")
+
+    await call.message.edit_text(
+        "👑 <b>SET VIP / VVIP</b>\n\n"
+        "Kirim:\n"
+        "• Telegram ID\n"
+        "• atau username (@user)",
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
+    )
+
     await call.answer()
 
-
 # =========================
-# GET USER
+# STEP 1: INPUT USER
 # =========================
 @router.message(VvipState.waiting_user)
 async def vvip_user(message: Message, state: FSMContext):
@@ -350,41 +364,92 @@ async def vvip_user(message: Message, state: FSMContext):
         return await message.answer("❌ User tidak ditemukan")
 
     await state.update_data(user_id=user["telegram_id"])
+    await state.set_state(VvipState.waiting_type)
+
+    # ✅ PINDAH KE DALAM FUNCTION
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔥 VIP", callback_data="set_type:vip")
+    kb.button(text="👑 VVIP", callback_data="set_type:vvip")
+    kb.adjust(1)
+
+    await message.answer(
+        "🎯 Pilih tipe membership:",
+        reply_markup=kb.as_markup()
+    )
+
+
+# =========================
+# STEP 2: PILIH TIPE
+# =========================
+@router.callback_query(F.data.startswith("set_type:"))
+async def set_type(call: CallbackQuery, state: FSMContext):
+
+    tipe = call.data.split(":")[1]
+
+    await state.update_data(type=tipe)
     await state.set_state(VvipState.waiting_days)
 
-    await message.answer("📅 Masukkan durasi VVIP (hari)")
+    await call.message.edit_text(
+        f"📅 Masukkan durasi {tipe.upper()} (hari)"
+    )
+
+    await call.answer()
 
 
 # =========================
-# SET VVIP DAYS (FIXED)
+# STEP 3: SET DAYS
 # =========================
+from datetime import timedelta
 
 @router.message(VvipState.waiting_days)
-async def vvip_set_days(message: Message, state: FSMContext):
+async def set_membership_days(message: Message, state: FSMContext):
 
     if not message.text or not message.text.isdigit():
         return await message.answer("❌ Harus angka (hari)")
 
     days = int(message.text)
     data = await state.get_data()
-    user_id = data.get("user_id")
 
-    if not user_id:
+    user_id = data.get("user_id")
+    tipe = data.get("type")
+
+    if not user_id or not tipe:
         await state.clear()
-        return await message.answer("❌ Session error, ulangi lagi")
+        return await message.answer("❌ Session error")
 
     pool = await get_pool()
 
-    await pool.execute(
-        """
-        UPDATE users
-        SET vip = TRUE,
-            vip_until = NOW() + $2
-        WHERE telegram_id = $1
-        """,
-        user_id,
-        timedelta(days=days)
-    )
+    if tipe == "vvip":
+        await pool.execute(
+            """
+            UPDATE users
+            SET 
+                vvip = TRUE,
+                vvip_until = NOW() + $2,
+                vip = FALSE,
+                vip_until = NULL
+            WHERE telegram_id = $1
+            """,
+            user_id,
+            timedelta(days=days)
+        )
+        msg = f"👑 VVIP aktif {days} hari"
 
-    await message.answer(f"👑 VVIP aktif selama {days} hari")
+    else:
+        await pool.execute(
+            """
+            UPDATE users
+            SET 
+                vip = TRUE,
+                vip_until = NOW() + $2,
+                vvip = FALSE,
+                vvip_until = NULL
+            WHERE telegram_id = $1
+            """,
+            user_id,
+            timedelta(days=days)
+        )
+        msg = f"🔥 VIP aktif {days} hari"
+
+    await message.answer(msg)
     await state.clear()
