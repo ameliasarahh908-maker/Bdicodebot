@@ -550,11 +550,8 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
     await state.update_data(saving=True)
 
     try:
-        media = data.get("media", [])
-
-        # FILTER MEDIA INVALID
         media = [
-            m for m in media
+            m for m in data.get("media", [])
             if m.get("message_id")
         ]
 
@@ -572,19 +569,21 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
         pool = await get_pool()
 
+
         await pool.execute(
             """
             INSERT INTO users(id, username, full_name)
             VALUES($1,$2,$3)
             ON CONFLICT(id)
             DO UPDATE SET
-                username = EXCLUDED.username,
-                full_name = EXCLUDED.full_name
+                username=EXCLUDED.username,
+                full_name=EXCLUDED.full_name
             """,
             user_id,
             message.from_user.username,
             message.from_user.full_name
         )
+
 
         while True:
             code = "zyxfidxbot" + "".join(
@@ -602,7 +601,9 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             if not exists:
                 break
 
+
         main_link = f"https://t.me/{BOT_USERNAME}?start=getFile_{code}"
+
 
         await pool.execute(
             """
@@ -650,30 +651,48 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
 
         # =========================
-        # SIMPAN KE TABEL MEDIAS
+        # SIMPAN MEDIA SESUAI SCHEMA DB
         # =========================
-        values = [
-            (code, m.get("message_id"), m.get("type"))
-            for m in media
-            if m.get("message_id")
-        ]
+
+        values = []
+
+        for m in media:
+            values.append(
+                (
+                    code,
+                    str(m.get("message_id")),
+                    m.get("type"),
+                    m.get("file_size",0),
+                    title
+                )
+            )
+
+
         if values:
-           await pool.executemany(
-               """
-               INSERT INTO medias (code, message_id, file_type)
-               VALUES ($1, $2, $3)
-               ON CONFLICT DO NOTHING
-               """,
-               values
-           )
+            await pool.executemany(
+                """
+                INSERT INTO medias(
+                    code,
+                    file_id,
+                    file_type,
+                    file_size,
+                    title
+                )
+                VALUES($1,$2,$3,$4,$5)
+                """,
+                values
+            )
+
 
         await state.clear()
+
 
         media_mode = (
             f"💰 Media Mode : Paid (Rp {price:,})".replace(",", ".")
             if is_paid
             else "🆓 Media Mode : Free"
         )
+
 
         text = (
             "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
@@ -683,10 +702,12 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             f"🔗 Link : {main_link}"
         )
 
+
         await message.answer(
             text,
             parse_mode="HTML"
         )
+
 
         try:
             me = await message.bot.get_me()
@@ -698,10 +719,16 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             )
 
         except Exception as e:
-            logging.error(f"LOG CHANNEL ERROR: {e}")
+            logging.error(
+                f"LOG CHANNEL ERROR: {e}"
+            )
+
 
     except Exception as e:
-        logging.error(f"FINAL SAVE ERROR: {e}")
+
+        logging.error(
+            f"FINAL SAVE ERROR: {e}"
+        )
 
         await state.update_data(
             saving=False
