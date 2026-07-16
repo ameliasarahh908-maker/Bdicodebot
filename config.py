@@ -42,7 +42,7 @@ CHANNEL_ID = int(
 GROUP_ID = int(
     os.getenv("GROUP_ID", str(CHANNEL_ID))
 )
-
+NOTIF_CHANNEL_ID = -1003894841696
 # =========================
 # WITHDRAW
 # =========================
