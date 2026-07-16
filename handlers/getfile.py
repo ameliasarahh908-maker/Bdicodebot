@@ -48,7 +48,7 @@ async def getfile_start(call: CallbackQuery, state: FSMContext):
     await state.set_state(GetFileState.wait_code)
 
     await call.message.edit_text(
-        "𝗘𝗔𝗥𝗡𝗙𝗜𝗟𝗘𝗕𝗢𝗫\n\n🔑 KIRIM KODE FILE"
+        "🔑 KIRIM KODE FILE"
     )
 
     await call.answer()
@@ -227,19 +227,6 @@ async def receive_code(message: Message, state: FSMContext):
         file["owner_id"]
     )
 
-
-    vip = await pool.fetchval(
-        """
-        SELECT 1
-        FROM users
-        WHERE telegram_id=$1
-        AND vip=TRUE
-        AND vip_until > NOW()
-        """,
-        message.from_user.id
-    )
-
-
     access = await pool.fetchval(
         """
         SELECT 1
@@ -255,7 +242,7 @@ async def receive_code(message: Message, state: FSMContext):
 
     has_access = bool(
         owner
-        or vip
+        or user_level in ["vip", "vvip"]
         or access
     )
 
@@ -403,19 +390,6 @@ async def open_file_by_code(
         file["owner_id"]
     )
 
-
-    vip = await pool.fetchval(
-        """
-        SELECT 1
-        FROM users
-        WHERE telegram_id=$1
-        AND vip=TRUE
-        AND vip_until > NOW()
-        """,
-        message.from_user.id
-    )
-
-
     access = await pool.fetchval(
         """
         SELECT 1
@@ -430,7 +404,9 @@ async def open_file_by_code(
 
 
     has_access = bool(
-        owner or vip or access
+        owner
+        or user_level in ["vip", "vvip"]
+        or access
     )
 
 
