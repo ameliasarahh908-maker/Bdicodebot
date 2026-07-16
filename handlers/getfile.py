@@ -146,16 +146,19 @@ async def auto_get_file(message:Message):
     text=message.text
 
     match=re.search(
-        r"Zyx\d{8}File\d{8}",
+        r"(?:zyxfidxbot[A-Za-z0-9_-]+|Zyx\d{8}File\d{8})",
         text,
         re.IGNORECASE
     )
+
     if not match:
         return
 
     code=match.group(0)
-    
+
     await open_file_by_code(
         message,
+        code
+    )
         code
     )
