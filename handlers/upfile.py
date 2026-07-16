@@ -25,8 +25,10 @@ router = Router()
 MAX_MEDIA = 200
 UPDATE_DELAY = 0.3
 
+from weakref import WeakValueDictionary
+
 _last_update: Dict[int, float] = {}
-_user_locks: Dict[int, asyncio.Lock] = {}
+_user_locks = WeakValueDictionary()
 
 
 def get_lock(user_id: int):
@@ -651,20 +653,20 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         # =========================
         # SIMPAN KE TABEL MEDIAS
         # =========================
-        for m in media:
-            if not m.get("message_id"):
-                continue
-
-            await pool.execute(
-                """
-                INSERT INTO medias (code, message_id, file_type)
-                VALUES ($1, $2, $3)
-                ON CONFLICT DO NOTHING
-                """,
-                code,
-                m.get("message_id"),
-                m.get("type")
-            )
+        values = [
+            (code, m.get("message_id"), m.get("type"))
+            for m in media
+            if m.get("message_id")
+        ]
+        if values:
+           await pool.executemany(
+               """
+               INSERT INTO medias (code, message_id, file_type)
+               VALUES ($1, $2, $3)
+               ON CONFLICT DO NOTHING
+               """,
+               values
+           )
 
         await state.clear()
 
