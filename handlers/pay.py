@@ -694,21 +694,53 @@ async def send_page(call: CallbackQuery):
     if not data:
         return await call.answer("Session habis", show_alert=True)
 
-    media_list = json.loads(data)
+    try:
+        media_list = json.loads(data)
+    except Exception:
+        return await call.answer("❌ Data media rusak", show_alert=True)
+
+    # =========================
+    # 🔥 FILTER DATA KOTOR
+    # =========================
+    media_list = [
+        m for m in media_list
+        if isinstance(m, dict) and m.get("message_id")
+    ]
+
+    total = len(media_list)
+
+    if total == 0:
+        return await call.answer("❌ Media kosong", show_alert=True)
+
+    # =========================
+    # 🔥 HITUNG PAGE VALID
+    # =========================
+    max_page = (total + PER_PAGE - 1) // PER_PAGE
+
+    if page > max_page:
+        page = max_page
+
+    if page < 1:
+        page = 1
 
     start = (page - 1) * PER_PAGE
     end = start + PER_PAGE
 
     items = media_list[start:end]
 
+    # ❗ HANDLE PAGE KOSONG (penting)
+    if not items:
+        return await call.answer(
+            "❌ Halaman ini kosong",
+            show_alert=True
+        )
+
     sukses = 0
+    gagal = 0
 
     for item in items:
         try:
-            msg_id = item.get("message_id")
-
-            if not msg_id:
-                continue
+            msg_id = item["message_id"]
 
             await call.bot.copy_message(
                 chat_id=call.message.chat.id,
@@ -720,10 +752,28 @@ async def send_page(call: CallbackQuery):
             sukses += 1
 
         except Exception:
-            logger.exception("SEND PAGE ERROR")
+            gagal += 1
+            logger.exception(f"SEND PAGE ERROR msg_id={item.get('message_id')}")
 
-    await call.answer(f"✅ Halaman {page} terkirim ({sukses} media)")
+    # =========================
+    # 🔥 FEEDBACK LEBIH JELAS
+    # =========================
+    text = f"📄 Halaman {page}\n✅ {sukses} terkirim"
 
+    if gagal:
+        text += f"\n❌ {gagal} gagal"
+
+    await call.message.answer(
+        text,
+        reply_markup=media_keyboard(
+            invoice,
+            page,
+            total
+        )
+    )
+
+    await call.answer()
+    
 @router.callback_query(F.data.startswith("sendall:"))
 async def send_all(call:CallbackQuery):
 
