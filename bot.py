@@ -64,19 +64,31 @@ from handlers.open_menu import router as open_menu_router
 dp.include_router(test_router)
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
+
+# FILE
 dp.include_router(upfile_router)
 dp.include_router(getfile_router)
-dp.include_router(search_price_router)
-dp.include_router(search_router)
-dp.include_router(top_router)
-dp.include_router(new_code_router)
 dp.include_router(page_router)
-dp.include_router(pay_router)
-dp.include_router(cancel_router)
+dp.include_router(open_menu_router)
+
+# MENU
+dp.include_router(menu_router)
+
+# SEARCH
+dp.include_router(search_router)
+dp.include_router(search_price_router)
+dp.include_router(new_code_router)
+dp.include_router(top_router)
+
+# ACCOUNT
 dp.include_router(account_router)
 dp.include_router(my_code_router)
 dp.include_router(vvip_router)
 dp.include_router(help_router)
+
+# PAYMENT
+dp.include_router(pay_router)
+dp.include_router(cancel_router)
 
 # WITHDRAW
 dp.include_router(withdraw_router)
@@ -84,12 +96,9 @@ dp.include_router(withdraw_confirm_router)
 
 # ADMIN
 dp.include_router(admin_router)
+
+# PALING TERAKHIR
 dp.include_router(notify_router)
-
-# OPEN FILE MENU
-dp.include_router(menu_router)
-dp.include_router(open_menu_router)
-
 
 # =========================
 # MAIN (ENTRY POINT)
