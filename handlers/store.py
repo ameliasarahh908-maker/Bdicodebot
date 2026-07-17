@@ -90,3 +90,123 @@ async def store_callback(call: CallbackQuery):
     await call.answer()
 
 
+
+@router.callback_query(
+    F.data == "store_free"
+)
+async def store_free(
+    call: CallbackQuery
+):
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            code,
+            title
+        FROM files
+        WHERE price = 0
+        ORDER BY created_at DESC
+        LIMIT 10
+        """
+    )
+
+
+    if not rows:
+
+        return await call.answer(
+            "Belum ada code gratis.",
+            show_alert=True
+        )
+
+
+    text = (
+        "🆓 <b>CODE GRATIS</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+
+    for i, row in enumerate(rows, 1):
+
+        text += (
+            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n\n"
+        )
+
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🏪 Kembali Store",
+                    callback_data="store"
+                )
+            ]
+        ]
+    )
+
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=keyboard
+    )
+
+    await call.answer()
+
+@router.callback_query(
+    F.data == "store_random"
+)
+async def store_random(
+    call: CallbackQuery
+):
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            code,
+            title,
+            price
+        FROM files
+        ORDER BY RANDOM()
+        LIMIT 10
+        """
+    )
+
+
+    text = (
+        "🎲 <b>RANDOM CODE</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+
+    for i, row in enumerate(rows, 1):
+
+        text += (
+            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n"
+            f"💰 Rp{row['price']:,}\n\n"
+        )
+
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🏪 Kembali Store",
+                        callback_data="store"
+                    )
+                ]
+            ]
+        )
+    )
+
+    await call.answer()
+
+
