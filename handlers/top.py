@@ -2,12 +2,14 @@ from math import ceil
 
 from aiogram import Router, F
 from aiogram.types import (
+    Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
 
 from database import get_pool
+from aiogram.types import Message
 
 
 router = Router()
@@ -702,4 +704,14 @@ def page_keyboard(
                 )
             ]
         ]
+    )
+
+
+async def top_command(
+    message: Message
+):
+
+    await show_top_code(
+        message,
+        1
     )
