@@ -111,7 +111,10 @@ async def receive_media(message: Message, state: FSMContext):
             )
 
             if not allowed:
-                return
+                return await message.answer(
+                    "❌ Fitur upload hanya tersedia untuk pengguna VVIP.\n\n"
+                    "Silakan upgrade akun untuk menggunakan fitur ini."
+                )
 
             if not await check_force_sub(message.bot, user_id):
                 return await message.answer(
