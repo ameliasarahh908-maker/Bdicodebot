@@ -46,7 +46,7 @@ from handlers.cancel import router as cancel_router
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
 from handlers.vvip import router as vvip_router
-from handlers.help import router as help_router
+from handlers.store import router as store_router
 from handlers.withdraw import (
     withdraw_router,
     withdraw_confirm_router
@@ -84,7 +84,7 @@ dp.include_router(top_router)
 dp.include_router(account_router)
 dp.include_router(my_code_router)
 dp.include_router(vvip_router)
-dp.include_router(help_router)
+dp.include_router(store_router)
 
 # PAYMENT
 dp.include_router(pay_router)
