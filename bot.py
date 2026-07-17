@@ -51,6 +51,7 @@ from handlers.withdraw import (
     withdraw_router,
     withdraw_confirm_router
 )
+from handlers.menu import router as menu_router
 from handlers.admin import router as admin_router
 from handlers.notify import router as notify_router
 from handlers.open_menu import router as open_menu_router
@@ -86,6 +87,7 @@ dp.include_router(admin_router)
 dp.include_router(notify_router)
 
 # OPEN FILE MENU
+dp.include_router(menu_router)
 dp.include_router(open_menu_router)
 
 
