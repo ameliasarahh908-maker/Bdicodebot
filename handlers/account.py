@@ -1,63 +1,69 @@
 from datetime import datetime, timezone
-from aiogram import Router,F
-from aiogram.types import Message,CallbackQuery,InlineKeyboardMarkup,InlineKeyboardButton
+
+from aiogram import Router, F
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 from database import get_pool
 
-router=Router()
+router = Router()
 
 
-async def open_account(target,user_id):
+async def open_account(target, user_id):
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    user=await pool.fetchrow(
+    user = await pool.fetchrow(
         """
-        SELECT vip,vip_until
+        SELECT vip, vip_until
         FROM users
         WHERE telegram_id=$1
         """,
         user_id
     )
 
-    vip_status="🆓 FREE"
-    vip_type="-"
-    remaining="-"
-    duration="-"
+    vip_status = "🆓 FREE"
+    vip_type = "-"
+    remaining = "-"
+    duration = "-"
 
     if user and user["vip"] and user["vip_until"]:
 
-        now=datetime.now(timezone.utc)
-        vip_until=user["vip_until"]
+        now = datetime.now(timezone.utc)
+        vip_until = user["vip_until"]
 
         if vip_until.tzinfo is None:
-            vip_until=vip_until.replace(tzinfo=timezone.utc)
+            vip_until = vip_until.replace(tzinfo=timezone.utc)
         else:
-            vip_until=vip_until.astimezone(timezone.utc)
+            vip_until = vip_until.astimezone(timezone.utc)
 
-        if vip_until>now:
+        if vip_until > now:
 
-            delta=vip_until-now
-            remaining_days=delta.days
+            delta = vip_until - now
+            remaining_days = delta.days
 
-            vip_status="👑 VIP ACTIVE"
+            vip_status = "👑 VIP ACTIVE"
 
-            if remaining_days<=1:
-                vip_type="Harian"
-            elif remaining_days<=30:
-                vip_type="Bulanan"
+            if remaining_days <= 1:
+                vip_type = "Harian"
+            elif remaining_days <= 30:
+                vip_type = "Bulanan"
             else:
-                vip_type="Lifetime"
+                vip_type = "Lifetime"
 
-            remaining=f"{remaining_days} hari"
-            duration=f"{remaining_days} hari"
+            remaining = f"{remaining_days} hari"
+            duration = f"{remaining_days} hari"
 
         else:
-            vip_status="❌ EXPIRED"
-            remaining="0 hari"
-            duration="0 hari"
+            vip_status = "❌ EXPIRED"
+            remaining = "0 hari"
+            duration = "0 hari"
 
-    text=(
+    text = (
         "━━━━━━━━━━━━━━\n"
         "👤 <b>ACCOUNT INFO</b>\n"
         "━━━━━━━━━━━━━━\n\n"
@@ -69,22 +75,29 @@ async def open_account(target,user_id):
         "━━━━━━━━━━━━━━"
     )
 
-    kb=InlineKeyboardMarkup(
+    kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💎 VVIP",callback_data="vvip")],
-            [InlineKeyboardButton(text="🔙 Kembali",callback_data="home")]
+            [InlineKeyboardButton(text="💎 VVIP", callback_data="vvip")],
+            [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
         ]
     )
 
-    await target.answer(
-        text,
-        parse_mode="HTML",
-        reply_markup=kb
-    )
+    if isinstance(target, Message):
+        await target.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    else:
+        await target.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
 
 
-@router.callback_query(F.data=="account")
-async def account_handler(call:CallbackQuery):
+@router.callback_query(F.data == "account")
+async def account_handler(call: CallbackQuery):
 
     await open_account(
         call.message,
@@ -94,8 +107,8 @@ async def account_handler(call:CallbackQuery):
     await call.answer()
 
 
-@router.message(F.text.in_(["👤 Akun","👤 Account"]))
-async def account_message(message:Message):
+@router.message(F.text.in_(["👤 Akun", "👤 Account"]))
+async def account_message(message: Message):
 
     await open_account(
         message,
