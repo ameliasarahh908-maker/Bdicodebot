@@ -1,5 +1,8 @@
+from math import ceil
+
 from aiogram import Router, F
 from aiogram.types import (
+    Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton
@@ -9,64 +12,165 @@ from database import get_pool
 
 router = Router()
 
+LIMIT = 10
 
-# =========================
-# MENU TOP FILE
-# =========================
-@router.callback_query(F.data == "top_file")
-async def top_file(call: CallbackQuery):
+
+async def send_top(target, page: int = 1):
 
     pool = await get_pool()
+
+    total = await pool.fetchval(
+        "SELECT COUNT(*) FROM files"
+    )
+
+    if total == 0:
+        text = "❌ Belum ada data."
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔙 Kembali",
+                        callback_data="home"
+                    )
+                ]
+            ]
+        )
+
+        if isinstance(target, Message):
+            return await target.answer(
+                text,
+                reply_markup=keyboard
+            )
+
+        return await target.message.edit_text(
+            text,
+            reply_markup=keyboard
+        )
+
+    max_page = ceil(total / LIMIT)
+
+    if page < 1:
+        page = 1
+
+    if page > max_page:
+        page = max_page
+
+    offset = (page - 1) * LIMIT
 
     rows = await pool.fetch(
         """
         SELECT
             code,
             title,
-            buy_count,
-            media_count,
-            price
+            view_count
         FROM files
-        WHERE is_paid = TRUE
-        ORDER BY buy_count DESC
-        LIMIT 10
-        """
+        ORDER BY
+            view_count DESC,
+            created_at DESC
+        LIMIT $1
+        OFFSET $2
+        """,
+        LIMIT,
+        offset
     )
-
-    if not rows:
-        await call.message.answer("❌ Belum ada data pembelian.")
-        return await call.answer()
 
     text = (
-        "🔥 <b>TOP 10 FILE PALING LARIS</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        "🏆 <b>TOP 10 CODE TERPOPULER</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
     )
 
-    for rank, row in enumerate(rows, start=1):
+    start = offset + 1
+
+    for i, row in enumerate(rows, start=start):
+
+        if i == 1:
+            rank = "🥇"
+        elif i == 2:
+            rank = "🥈"
+        elif i == 3:
+            rank = "🥉"
+        else:
+            rank = f"{i}."
 
         text += (
-            f"{rank}. 📌 <b>{row['title']}</b>\n"
-            f"   🔑 <code>{row['code']}</code>\n"
-            f"   💰 Harga : {row['price']}\n"
-            f"   🛒 Dibeli : {row['buy_count']}x\n"
-            f"   📦 Media : {row['media_count']} file\n\n"
+            f"{rank} <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n"
+            f"👁 Dibuka : <b>{row['view_count']}</b>x\n\n"
+        )
+
+    nav = []
+
+    if page > 1:
+        nav.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=f"top:{page-1}"
+            )
+        )
+
+    nav.append(
+        InlineKeyboardButton(
+            text=f"{page}/{max_page}",
+            callback_data="ignore"
+        )
+    )
+
+    if page < max_page:
+        nav.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=f"top:{page+1}"
+            )
         )
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
+            nav,
             [
                 InlineKeyboardButton(
-                    text="⬅️ Kembali",
+                    text="🔙 Kembali",
                     callback_data="home"
                 )
             ]
         ]
     )
 
-    await call.message.answer(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
+    if isinstance(target, Message):
 
+        await target.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+    else:
+
+        await target.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+async def top_command(message: Message):
+    await send_top(message, 1)
+
+
+@router.message(F.text == "🏆 Top 10 Code")
+async def top_menu(message: Message):
+    await send_top(message, 1)
+
+
+@router.callback_query(F.data.startswith("top:"))
+async def top_page(call: CallbackQuery):
+
+    page = int(call.data.split(":")[1])
+
+    await send_top(call, page)
+
+    await call.answer()
+
+
+@router.callback_query(F.data == "ignore")
+async def ignore(call: CallbackQuery):
     await call.answer()
