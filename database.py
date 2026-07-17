@@ -34,6 +34,24 @@ async def get_pool():
                     max_inactive_connection_lifetime=300
                 )
 
+                # DEBUG DATABASE
+                async with _pool.acquire() as conn:
+                    db = await conn.fetchval(
+                        "SELECT current_database()"
+                    )
+
+                    schema = await conn.fetch("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name='file_purchases'
+                        ORDER BY ordinal_position
+                    """)
+
+                    logging.info(f"DATABASE = {db}")
+                    logging.info(
+                        f"COLUMNS = {[r['column_name'] for r in schema]}"
+                    )
+
                 logging.info("✅ PostgreSQL connected")
                 break
 
@@ -44,15 +62,6 @@ async def get_pool():
                 await asyncio.sleep(3)
 
     return _pool
-
-
-async def close_db():
-    global _pool
-
-    if _pool is not None:
-        await _pool.close()
-        _pool = None
-        logging.info("🔌 Database closed")
 
 
 # ========================
