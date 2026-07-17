@@ -23,5 +23,5 @@ async def account(message: Message):
 
 @router.message(F.text == "💎 Upgrade")
 async def upgrade(message: Message):
-    from handlers.vvip import vvip_menu
-    await vvip_menu(message)
+    from handlers.vvip import open_vvip
+    await open_vvip(message)
