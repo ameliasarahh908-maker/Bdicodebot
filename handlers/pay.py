@@ -10,7 +10,10 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    BufferedInputFile
+    BufferedInputFile,
+    InputMediaPhoto,
+    InputMediaVideo,
+    InputMediaDocument
 )
 
 from utils.redis_client import safe_set, safe_get, safe_delete
