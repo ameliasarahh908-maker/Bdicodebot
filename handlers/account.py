@@ -77,7 +77,6 @@ async def account_handler(call: CallbackQuery):
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📦 My Code", callback_data="my_code")],
             [InlineKeyboardButton(text="💎 VVIP", callback_data="vvip")],
             [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
         ]
@@ -85,3 +84,13 @@ async def account_handler(call: CallbackQuery):
 
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
+
+
+@router.message(F.text.in_(["👤 Akun","👤 Account"]))
+async def account_message(message:Message):
+
+    await open_account(
+        message,
+        message.from_user.id
+
+    )
