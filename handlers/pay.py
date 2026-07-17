@@ -727,41 +727,53 @@ async def send_page(call: CallbackQuery):
     try:
         _, invoice, page = call.data.split(":")
         page = int(page)
+
     except Exception:
         return await call.answer(
-            "❌ Data callback rusak",
+            "❌ Data halaman rusak",
             show_alert=True
         )
 
-    data = await safe_get(f"paidmedia:{invoice}")
+
+    data = await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
 
     if not data:
         return await call.answer(
-            "Session habis",
+            "❌ Session habis",
             show_alert=True
         )
+
 
     try:
         if isinstance(data, str):
             media_list = json.loads(data)
         else:
             media_list = data
+
     except Exception as e:
-        logger.error(f"JSON ERROR: {e}")
+        logger.error(
+            f"MEDIA JSON ERROR {e}"
+        )
+
         return await call.answer(
-            "❌ Data rusak",
+            "❌ Data media rusak",
             show_alert=True
         )
 
-    # =========================
-    # FILTER VALID DATA
-    # =========================
+
+    # FILTER MEDIA VALID
     media_list = [
         m for m in media_list
-        if isinstance(m, dict) and m.get("message_id")
+        if isinstance(m, dict)
+        and m.get("file_id")
     ]
 
+
     total = len(media_list)
+
 
     if total == 0:
         return await call.answer(
@@ -769,78 +781,151 @@ async def send_page(call: CallbackQuery):
             show_alert=True
         )
 
-    # =========================
-    # PAGINATION
-    # =========================
-    max_page = (total + PER_PAGE - 1) // PER_PAGE
 
-    page = max(1, min(page, max_page))
+    max_page = (
+        total + PER_PAGE - 1
+    ) // PER_PAGE
 
-    start = (page - 1) * PER_PAGE
+
+    page = max(
+        1,
+        min(page, max_page)
+    )
+
+
+    start = (
+        page - 1
+    ) * PER_PAGE
+
+
     end = start + PER_PAGE
+
 
     items = media_list[start:end]
 
-    if not items:
+
+    album = []
+
+
+    for index,item in enumerate(items):
+
+        file_id = item.get(
+            "file_id"
+        )
+
+        if not file_id:
+            continue
+
+
+        media_type = (
+            item.get("type")
+            or "document"
+        ).lower()
+
+
+        caption = None
+
+
+        if index == 0:
+            caption = (
+                "📦 <b>FILE BERHASIL DIBUKA</b>\n\n"
+                f"📄 Halaman: {page}/{max_page}\n"
+                f"📊 Total: {total} file"
+            )
+
+
+        try:
+
+            if media_type == "photo":
+
+                album.append(
+                    InputMediaPhoto(
+                        media=file_id,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                )
+
+
+            elif media_type == "video":
+
+                album.append(
+                    InputMediaVideo(
+                        media=file_id,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                )
+
+
+            else:
+
+                album.append(
+                    InputMediaDocument(
+                        media=file_id,
+                        caption=caption,
+                        parse_mode="HTML"
+                    )
+                )
+
+
+        except Exception as e:
+
+            logger.error(
+                f"BUILD ALBUM ERROR {e}"
+            )
+
+
+
+    if not album:
         return await call.answer(
-            "❌ Halaman kosong",
+            "❌ Album kosong",
             show_alert=True
         )
 
-    sukses = 0
-    gagal = 0
 
-    # =========================
-    # SEND MEDIA
-    # =========================
-    for item in items:
-        msg_id = item.get("message_id")
+    try:
 
-        if not msg_id:
-            continue
+        if len(album) == 1:
 
-        try:
-            msg_id = int(msg_id)
-
-            await call.bot.copy_message(
+            await call.bot.send_document(
                 chat_id=call.message.chat.id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id,
+                document=album[0].media,
                 protect_content=True
             )
 
-            sukses += 1
-            await asyncio.sleep(0.3)
+        else:
 
-        except Exception as e:
-            gagal += 1
-            logger.error(f"SEND PAGE ERROR: {e}")
+            await call.bot.send_media_group(
+                chat_id=call.message.chat.id,
+                media=album,
+                protect_content=True
+            )
 
-            try:
-                await call.bot.forward_message(
-                    chat_id=call.message.chat.id,
-                    from_chat_id=STORAGE_CHANNEL_ID,
-                    message_id=msg_id
-                )
-                sukses += 1
-            except Exception as e2:
-                logger.error(f"FORWARD FALLBACK ERROR: {e2}")
 
-    # =========================
-    # RESULT
-    # =========================
-    text = (
-        f"📄 Halaman {page}/{max_page}\n"
-        f"✅ {sukses} media berhasil dikirim"
-    )
+    except Exception as e:
 
-    if gagal:
-        text += f"\n❌ {gagal} media gagal"
+        logger.exception(
+            f"SEND ALBUM ERROR {e}"
+        )
+
+        return await call.answer(
+            "❌ Gagal kirim media",
+            show_alert=True
+        )
+
+
 
     await call.message.answer(
-        text,
-        reply_markup=media_keyboard(invoice, page, total)
+        f"📦 Halaman {page}/{max_page}\n"
+        f"✅ {len(album)} media terkirim",
+        reply_markup=media_keyboard(
+            invoice,
+            page,
+            total
+        )
     )
+
 
     await call.answer()
     
