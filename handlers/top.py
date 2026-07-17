@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 
 from database import get_pool
+from keyboards.store import store_keyboard
 
 router = Router()
 
