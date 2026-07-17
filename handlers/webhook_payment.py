@@ -2,11 +2,16 @@ from fastapi import Request
 import logging
 import asyncio
 
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from database import fetchrow, execute
 from bot import bot
 from handlers.page import send_page
 
 logger = logging.getLogger(__name__)
+
+BUY_CHANNEL_ID = -1003894841696
+BOT_USERNAME = "ZyxFidxBot"
 
 
 async def bayar_webhook(request: Request):
@@ -48,7 +53,8 @@ async def bayar_webhook(request: Request):
     await execute(
         """
         UPDATE file_purchases
-        SET status='paid', paid_at=NOW()
+        SET status='paid',
+            paid_at=NOW()
         WHERE payment_id=$1
         """,
         invoice_id
@@ -82,7 +88,7 @@ async def bayar_webhook(request: Request):
             logger.warning(f"Gagal edit QR: {e}")
 
     # =========================
-    # KIRIM FILE (RETRY)
+    # KIRIM FILE
     # =========================
     sent = False
 
@@ -95,7 +101,6 @@ async def bayar_webhook(request: Request):
                 code=tx["file_code"],
                 page=1
             )
-
             sent = True
             break
 
@@ -104,11 +109,39 @@ async def bayar_webhook(request: Request):
             await asyncio.sleep(1)
 
     if sent:
+
         await bot.send_message(
             tx["user_id"],
             "✅ Pembayaran berhasil! File sudah dikirim."
         )
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛒 Buy Now",
+                        url=f"https://t.me/{BOT_USERNAME}"
+                    )
+                ]
+            ]
+        )
+
+        try:
+            await bot.send_message(
+                chat_id=BUY_CHANNEL_ID,
+                text=(
+                    "💸 <b>FILE PAID SUCCESS</b>\n\n"
+                    f"📦 <b>Code:</b> <code>{tx['file_code']}</code>\n"
+                    f"👤 <b>User:</b> <code>{tx['user_id']}</code>"
+                ),
+                parse_mode="HTML",
+                reply_markup=kb
+            )
+        except Exception as e:
+            logger.warning(f"Gagal kirim notif channel: {e}")
+
         logger.info(f"FILE TERKIRIM: {invoice_id}")
+
     else:
         await bot.send_message(
             tx["user_id"],
