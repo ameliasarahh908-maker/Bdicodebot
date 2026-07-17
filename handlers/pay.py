@@ -845,29 +845,51 @@ async def send_page(call: CallbackQuery):
     await call.answer()
     
 @router.callback_query(F.data.startswith("sendall:"))
-async def send_all(call:CallbackQuery):
+async def send_all(call: CallbackQuery):
 
-    invoice=call.data.split(":")[1]
+    invoice = call.data.split(":")[1]
 
-    data=await safe_get(f"paidmedia:{invoice}")
+    data = await safe_get(f"paidmedia:{invoice}")
 
     if not data:
-        return await call.answer("Session habis", show_alert=True)
+        return await call.answer(
+            "Session habis",
+            show_alert=True
+        )
 
-    media_list=json.loads(data)
+    try:
+        if isinstance(data, str):
+            media_list = json.loads(data)
+        else:
+            media_list = data
+    except Exception as e:
+        logger.error(f"SEND ALL JSON ERROR: {e}")
+        return await call.answer(
+            "❌ Data rusak",
+            show_alert=True
+        )
+
+    media_list = [
+        m for m in media_list
+        if isinstance(m, dict) and m.get("message_id")
+    ]
+
+    if not media_list:
+        return await call.answer(
+            "❌ Media kosong",
+            show_alert=True
+        )
 
     status = await call.message.answer(
         f"📦 Mengirim {len(media_list)} file..."
     )
 
-    sukses=0
+    sukses = 0
+    gagal = 0
 
-    for i,item in enumerate(media_list, start=1):
+    for i, item in enumerate(media_list, start=1):
         try:
-            msg_id = item.get("message_id")
-
-            if not msg_id:
-                continue
+            msg_id = int(item["message_id"])
 
             await call.bot.copy_message(
                 chat_id=call.message.chat.id,
@@ -876,25 +898,26 @@ async def send_all(call:CallbackQuery):
                 protect_content=True
             )
 
-            sukses+=1
+            sukses += 1
 
             if i % 10 == 0:
                 try:
                     await status.edit_text(
                         f"📦 Mengirim...\n{sukses}/{len(media_list)}"
                     )
-                except:
+                except Exception:
                     pass
 
-            await asyncio.sleep(0.7)
+            await asyncio.sleep(0.3)
 
-        except Exception:
-            logger.exception("SEND ALL ERROR")
+        except Exception as e:
+            gagal += 1
+            logger.exception(f"SEND ALL ERROR: {e}")
 
     await status.edit_text(
-        f"✅ Selesai\n{sukses}/{len(media_list)} media terkirim"
+        f"✅ Selesai\n\n"
+        f"📦 Berhasil: {sukses}\n"
+        f"❌ Gagal: {gagal}"
     )
 
-@router.callback_query(F.data=="none")
-async def none_callback(call:CallbackQuery):
     await call.answer()
