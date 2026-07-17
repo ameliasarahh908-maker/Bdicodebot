@@ -381,17 +381,42 @@ async def buy_vip(call: CallbackQuery):
 # =========================
 # WAITING PAYMENT
 # =========================
-@router.callback_query(
-    F.data == "waiting_payment"
-)
-async def waiting_payment(
-    call: CallbackQuery
-):
+@router.callback_query(F.data == "waiting_payment")
+async def waiting_payment(call: CallbackQuery):
+    await call.answer("🔄 Mengecek pembayaran...")
 
-    await call.answer(
+    pool = await get_pool()
 
-        "⏳ Pembayaran akan dicek otomatis.",
+    payment = await pool.fetchrow(
+        """
+        SELECT invoice_id, status
+        FROM payments
+        WHERE user_id=$1
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        call.from_user.id
+    )
 
+    if not payment:
+        return await call.answer(
+            "❌ Invoice tidak ditemukan.",
+            show_alert=True
+        )
+
+    if payment["status"] == "paid":
+        return await call.answer(
+            "✅ Pembayaran sudah berhasil.",
+            show_alert=True
+        )
+
+    if payment["status"] == "expired":
+        return await call.answer(
+            "⌛ Invoice sudah kedaluwarsa.",
+            show_alert=True
+        )
+
+    return await call.answer(
+        "⏳ Pembayaran masih menunggu.",
         show_alert=True
-
     )
