@@ -6,6 +6,7 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import (
     CallbackQuery,
+    Message,
     BufferedInputFile
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -21,64 +22,73 @@ wib = pytz.timezone("Asia/Jakarta")
 router = Router()
 
 
-
-# =========================
-# VIP / VVIP MENU
-# =========================
-@router.callback_query(F.data == "vvip")
-async def vvip_menu(call: CallbackQuery):
-    await call.answer()
+def build_vvip():
 
     kb = InlineKeyboardBuilder()
 
-
     for key, paket in VIP_PACKAGES.items():
-
         kb.button(
-            text=(
-                f"💎 {paket['name']} • "
-                f"Rp {paket['price']:,}"
-            ).replace(",", "."),
-
+            text=f"💎 {paket['name']} • Rp {paket['price']:,}".replace(",", "."),
             callback_data=f"buyvip:{key}"
         )
-
 
     kb.button(
         text="🔙 Kembali",
         callback_data="account"
     )
 
-
     kb.adjust(1)
-
 
     text = (
         "<b><i>💎 PREMIUM ACCESS</i></b>\n"
         "━━━━━━━━━━━━━━\n\n"
-
         "Pilih paket premium:\n\n"
-
         "💠 <b>VIP</b>\n"
         "• Akses file premium\n"
         "• Masa aktif sesuai paket\n"
         "• Tidak bisa upload\n\n"
-
         "💎 <b>VVIP</b>\n"
         "• Semua fitur VIP\n"
         "• Bisa upload file\n"
         "• Storage uploader\n\n"
-
         "━━━━━━━━━━━━━━\n"
         "👇 Pilih paket:"
     )
 
+    return text, kb.as_markup()
+
+
+async def open_vvip(message: Message):
+    text, markup = build_vvip()
+
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=markup
+    )
+
+
+async def safe_edit_vvip(message):
+    text, markup = build_vvip()
 
     await safe_edit(
-        call.message,
+        message,
         text,
-        reply_markup=kb.as_markup()
+        reply_markup=markup
     )
+# =========================
+# VIP / VVIP MENU
+# =========================
+@router.message(F.text == "💎 Upgrade")
+async def vvip_message(message: Message):
+    await open_vvip(message)
+
+
+@router.callback_query(F.data == "vvip")
+async def vvip_menu(call: CallbackQuery):
+    await call.answer()
+    await safe_edit_vvip(call.message)
+
 
 # =========================
 # BUY VIP / VVIP
@@ -87,33 +97,36 @@ async def vvip_menu(call: CallbackQuery):
 async def buy_vip(call: CallbackQuery):
     await call.answer("⏳ Membuat invoice...")
 
-    paket_id = call.data.split(":")[1]
+    paket_id = call.data.split(":", 1)[1]
 
-
-    if paket_id not in VIP_PACKAGES:
-
+    paket = VIP_PACKAGES.get(paket_id)
+    if paket is None:
         return await call.answer(
             "❌ Paket tidak ditemukan",
             show_alert=True
         )
 
-    paket = VIP_PACKAGES[paket_id]
     pool = await get_pool()
 
     existing = await pool.fetchrow(
-        "SELECT * FROM payments WHERE user_id=$1 AND status='pending'",
+        """
+        SELECT 1
+        FROM payments
+        WHERE user_id=$1
+          AND status='pending'
+        """,
         call.from_user.id
     )
 
     if existing:
         return await call.answer(
-            "⚠️ Kamu masih punya invoice belum dibayar",
+            "⚠️ Kamu masih punya invoice yang belum dibayar.",
             show_alert=True
         )
 
     await safe_edit(
         call.message,
-        "⏳ Membuat invoice pembayaran...",
+        "⏳ Membuat invoice pembayaran..."
     )
     # =========================
     # CREATE PAYMENT
