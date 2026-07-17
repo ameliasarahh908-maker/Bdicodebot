@@ -101,7 +101,6 @@ async def start_cmd(message: Message, state: FSMContext):
             username
         )
 
-
     except Exception as e:
 
         logging.exception(
@@ -296,6 +295,7 @@ async def render_home_fast(
             parse_mode="HTML",
             reply_markup=await home_kb(user_id)
         )
+
     except Exception:
         await bot.send_message(
             user_id,
