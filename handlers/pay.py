@@ -476,7 +476,7 @@ async def check_payment(call: CallbackQuery):
         # =========================
         await safe_set(
             f"paidmedia:{invoice}",
-            json.dumps(media_list),
+            media_list,
             ex=3600
         )
 
@@ -512,21 +512,33 @@ async def check_payment(call: CallbackQuery):
             await send_upgrade_notif(call.bot, purchase["user_id"], "vip")
 
         # =========================
-        # 🔥 NOTIF CHANNEL (FIXED)
+        # 🔥 NOTIF CHANNEL
         # =========================
         try:
             masked_id = mask_user_id(purchase["user_id"])
 
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🛒 Buy Now",
+                            url="https://t.me/+T8c4gdEWf843ZWQ1"
+                        )
+                    ]
+                ]
+            )
+
             text = (
                 "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
-                f"📁 Code: <code>{purchase['file_code']}</code>\n"
-                f"👤 Buyer: <code>{masked_id}</code>"
+                f"📁 <b>Code:</b> <code>{purchase['file_code']}</code>\n"
+                f"👤 <b>Buyer:</b> <code>{masked_id}</code>"
             )
 
             await call.bot.send_message(
                 chat_id=NOTIF_CHANNEL_ID,
                 text=text,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_markup=kb
             )
 
         except Exception:
@@ -676,15 +688,10 @@ async def cancel_payment(call: CallbackQuery):
 @router.callback_query(F.data.startswith("mpage:"))
 async def media_page(call: CallbackQuery):
 
-    _,invoice,page = call.data.split(":")
+    _, invoice, page = call.data.split(":")
+    page = int(page)
 
-    page=int(page)
-
-
-    data = await safe_get(
-        f"paidmedia:{invoice}"
-    )
-
+    data = await safe_get(f"paidmedia:{invoice}")
 
     if not data:
         return await call.answer(
@@ -692,9 +699,17 @@ async def media_page(call: CallbackQuery):
             show_alert=True
         )
 
-
-    media_list=json.loads(data)
-
+    try:
+        if isinstance(data, str):
+            media_list = json.loads(data)
+        else:
+            media_list = data
+    except Exception as e:
+        logger.error(f"MEDIA PAGE JSON ERROR: {e}")
+        return await call.answer(
+            "❌ Data rusak",
+            show_alert=True
+        )
 
     await call.message.edit_reply_markup(
         reply_markup=media_keyboard(
@@ -704,7 +719,6 @@ async def media_page(call: CallbackQuery):
         )
     )
 
-
     await call.answer()
 
 @router.callback_query(F.data.startswith("sendpage:"))
@@ -713,22 +727,34 @@ async def send_page(call: CallbackQuery):
     try:
         _, invoice, page = call.data.split(":")
         page = int(page)
-    except:
-        return await call.answer("❌ Data callback rusak", show_alert=True)
+    except Exception:
+        return await call.answer(
+            "❌ Data callback rusak",
+            show_alert=True
+        )
 
     data = await safe_get(f"paidmedia:{invoice}")
 
     if not data:
-        return await call.answer("Session habis", show_alert=True)
+        return await call.answer(
+            "Session habis",
+            show_alert=True
+        )
 
     try:
-        media_list = json.loads(data)
+        if isinstance(data, str):
+            media_list = json.loads(data)
+        else:
+            media_list = data
     except Exception as e:
         logger.error(f"JSON ERROR: {e}")
-        return await call.answer("❌ Data rusak", show_alert=True)
+        return await call.answer(
+            "❌ Data rusak",
+            show_alert=True
+        )
 
     # =========================
-    # 🔥 FILTER VALID DATA
+    # FILTER VALID DATA
     # =========================
     media_list = [
         m for m in media_list
@@ -738,10 +764,13 @@ async def send_page(call: CallbackQuery):
     total = len(media_list)
 
     if total == 0:
-        return await call.answer("❌ Media kosong", show_alert=True)
+        return await call.answer(
+            "❌ Media kosong",
+            show_alert=True
+        )
 
     # =========================
-    # 🔥 PAGINATION SAFE
+    # PAGINATION
     # =========================
     max_page = (total + PER_PAGE - 1) // PER_PAGE
 
@@ -749,25 +778,28 @@ async def send_page(call: CallbackQuery):
 
     start = (page - 1) * PER_PAGE
     end = start + PER_PAGE
+
     items = media_list[start:end]
 
     if not items:
-        return await call.answer("❌ Halaman kosong", show_alert=True)
+        return await call.answer(
+            "❌ Halaman kosong",
+            show_alert=True
+        )
 
     sukses = 0
     gagal = 0
 
     # =========================
-    # 🚀 SEND MEDIA
+    # SEND MEDIA
     # =========================
     for item in items:
+        msg_id = item.get("message_id")
+
+        if not msg_id:
+            continue
+
         try:
-            msg_id = item.get("message_id")
-
-            if not msg_id:
-                continue
-
-            # 🔥 FIX: pastikan integer
             msg_id = int(msg_id)
 
             await call.bot.copy_message(
@@ -778,15 +810,12 @@ async def send_page(call: CallbackQuery):
             )
 
             sukses += 1
-
-            # 🔥 FIX: anti rate limit
             await asyncio.sleep(0.3)
 
         except Exception as e:
             gagal += 1
-            logger.error(f"SEND PAGE ERROR: {e} | ITEM: {item}")
+            logger.error(f"SEND PAGE ERROR: {e}")
 
-            # 🔥 fallback kalau copy gagal
             try:
                 await call.bot.forward_message(
                     chat_id=call.message.chat.id,
@@ -798,12 +827,15 @@ async def send_page(call: CallbackQuery):
                 logger.error(f"FORWARD FALLBACK ERROR: {e2}")
 
     # =========================
-    # 🧾 RESULT MESSAGE
+    # RESULT
     # =========================
-    text = f"📄 Halaman {page}/{max_page}\n✅ {sukses} terkirim"
+    text = (
+        f"📄 Halaman {page}/{max_page}\n"
+        f"✅ {sukses} media berhasil dikirim"
+    )
 
     if gagal:
-        text += f"\n❌ {gagal} gagal"
+        text += f"\n❌ {gagal} media gagal"
 
     await call.message.answer(
         text,
