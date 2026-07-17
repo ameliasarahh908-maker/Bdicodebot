@@ -757,12 +757,15 @@ async def send_page(call: CallbackQuery):
         if isinstance(data, str):
             data = json.loads(data)
 
-        media_list = data["media"]
 
-        share_media = data.get(
-            "share_media",
-            True
-        )
+        if isinstance(data, dict):
+            media_list = data.get("media", [])
+            share_media = data.get("share_media", True)
+
+        else:
+            media_list = data
+            share_media = True
+
 
         protect = not share_media
 
@@ -959,12 +962,15 @@ async def send_all(call: CallbackQuery):
         if isinstance(data, str):
             data = json.loads(data)
 
-        media_list = data["media"]
 
-        share_media = data.get(
-            "share_media",
-            True
-        )
+        if isinstance(data, dict):
+            media_list = data.get("media", [])
+            share_media = data.get("share_media", True)
+
+        else:
+            media_list = data
+            share_media = True
+
 
         protect = not share_media
     except Exception as e:
