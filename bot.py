@@ -66,6 +66,7 @@ from handlers.top import router as top_router
 from handlers.search_code import router as search_router
 from handlers.search_price import router as search_price_router
 from handlers.new_code import router as new_code_router
+from handlers.search_store import router as search_store_router
 
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
@@ -113,6 +114,7 @@ dp.include_router(top_router)
 # SEARCH
 dp.include_router(search_router)
 dp.include_router(search_price_router)
+dp.include_router(search_store_router)
 dp.include_router(new_code_router)
 
 
