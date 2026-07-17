@@ -98,18 +98,15 @@ async def open_account(target, user_id):
 
 @router.callback_query(F.data == "account")
 async def account_handler(call: CallbackQuery):
-
     await open_account(
         call.message,
         call.from_user.id
     )
-
     await call.answer()
 
 
 @router.message(F.text.in_(["👤 Akun", "👤 Account"]))
-async def account_message(message: Message):
-
+async def account(message: Message):
     await open_account(
         message,
         message.from_user.id
