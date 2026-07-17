@@ -13,15 +13,3 @@ async def store(message: Message):
 async def top(message: Message):
     from handlers.top import top_command
     await top_command(message)
-
-
-@router.message(F.text.in_(["👤 Akun", "👤 Account"]))
-async def account(message: Message):
-    from handlers.account import account_menu
-    await account_menu(message)
-
-
-@router.message(F.text == "💎 Upgrade")
-async def upgrade(message: Message):
-    from handlers.vvip import open_vvip
-    await open_vvip(message)
