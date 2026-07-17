@@ -734,7 +734,7 @@ async def send_page(call: CallbackQuery):
         _, invoice, page = call.data.split(":")
         page = int(page)
 
-    except Exception:
+    except:
         return await call.answer(
             "❌ Data halaman rusak",
             show_alert=True
@@ -760,7 +760,10 @@ async def send_page(call: CallbackQuery):
 
         if isinstance(data, dict):
             media_list = data.get("media", [])
-            share_media = data.get("share_media", True)
+            share_media = data.get(
+                "share_media",
+                True
+            )
 
         else:
             media_list = data
@@ -769,18 +772,18 @@ async def send_page(call: CallbackQuery):
 
         protect = not share_media
 
+
     except Exception as e:
         logger.error(
-            f"MEDIA JSON ERROR {e}"
+            f"MEDIA ERROR {e}"
         )
 
         return await call.answer(
-            "❌ Data media rusak",
+            "❌ Data rusak",
             show_alert=True
         )
 
 
-    # FILTER MEDIA VALID
     media_list = [
         m for m in media_list
         if isinstance(m, dict)
@@ -805,7 +808,7 @@ async def send_page(call: CallbackQuery):
 
     page = max(
         1,
-        min(page, max_page)
+        min(page,max_page)
     )
 
 
@@ -820,121 +823,53 @@ async def send_page(call: CallbackQuery):
     items = media_list[start:end]
 
 
-    album = []
+    status = await call.message.answer(
+        f"📦 Mengirim halaman {page}/{max_page}..."
+    )
 
 
-    for index,item in enumerate(items):
-
-        file_id = item.get(
-            "message_id"
-        )
-
-        if not file_id:
-            continue
+    sukses = 0
 
 
-        media_type = (
-            item.get("type")
-            or "document"
-        ).lower()
-
-
-        caption = None
-
-
-        if index == 0:
-            caption = (
-                "📦 <b>FILE BERHASIL DIBUKA</b>\n\n"
-                f"📄 Halaman: {page}/{max_page}\n"
-                f"📊 Total: {total} file"
-            )
-
+    for item in items:
 
         try:
 
-            if media_type == "photo":
-
-                album.append(
-                    InputMediaPhoto(
-                        media=file_id,
-                        caption=caption,
-                        parse_mode="HTML"
-                    )
-                )
+            msg_id = int(
+                item["message_id"]
+            )
 
 
-            elif media_type == "video":
-
-                album.append(
-                    InputMediaVideo(
-                        media=file_id,
-                        caption=caption,
-                        parse_mode="HTML"
-                    )
-                )
+            await call.bot.copy_message(
+                chat_id=call.message.chat.id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=msg_id,
+                protect_content=protect
+            )
 
 
-            else:
+            sukses += 1
 
-                album.append(
-                    InputMediaDocument(
-                        media=file_id,
-                        caption=caption,
-                        parse_mode="HTML"
-                    )
-                )
+
+            await asyncio.sleep(0.2)
 
 
         except Exception as e:
 
-            logger.error(
-                f"BUILD ALBUM ERROR {e}"
+            logger.exception(
+                f"COPY MEDIA ERROR {e}"
             )
 
 
 
-    if not album:
-        return await call.answer(
-            "❌ Album kosong",
-            show_alert=True
-        )
-
-
-    try:
-
-        if len(album) == 1:
-
-            await call.bot.send_document(
-                chat_id=call.message.chat.id,
-                document=album[0].media,
-                protect_content=protect
-            )
-
-        else:
-
-            await call.bot.send_media_group(
-                chat_id=call.message.chat.id,
-                media=album,
-                protect_content=protect
-            )
-
-
-    except Exception as e:
-
-        logger.exception(
-            f"SEND ALBUM ERROR {e}"
-        )
-
-        return await call.answer(
-            "❌ Gagal kirim media",
-            show_alert=True
-        )
-
+    await status.edit_text(
+        f"📦 Halaman {page}/{max_page}\n\n"
+        f"✅ Terkirim: {sukses}/{len(items)} media"
+    )
 
 
     await call.message.answer(
-        f"📦 Halaman {page}/{max_page}\n"
-        f"✅ {len(album)} media terkirim",
+        f"📄 Halaman {page}/{max_page}",
         reply_markup=media_keyboard(
             invoice,
             page,
