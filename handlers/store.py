@@ -3,6 +3,12 @@ from aiogram.types import Message, CallbackQuery
 
 from database import get_pool
 from keyboards.store import store_keyboard
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 
 router = Router()
@@ -210,3 +216,206 @@ async def store_random(
     await call.answer()
 
 
+# =========================
+# FAVORIT
+# =========================
+
+@router.callback_query(
+    F.data == "store_favorite"
+)
+async def store_favorite(
+    call: CallbackQuery
+):
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            code,
+            title,
+            favorite_count,
+            price
+        FROM files
+        ORDER BY
+            favorite_count DESC,
+            created_at DESC
+        LIMIT 10
+        """
+    )
+
+    if not rows:
+
+        return await call.answer(
+            "Belum ada data.",
+            show_alert=True
+        )
+
+    text = (
+        "❤️ <b>CODE FAVORIT</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+    for i, row in enumerate(rows, 1):
+
+        price = (
+            "Gratis"
+            if row["price"] == 0
+            else f"Rp{row['price']:,}"
+        )
+
+        text += (
+            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n"
+            f"❤️ Favorit : {row['favorite_count']}\n"
+            f"💰 {price}\n\n"
+        )
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🏪 Kembali Store",
+                        callback_data="store"
+                    )
+                ]
+            ]
+        )
+    )
+
+    await call.answer()
+
+# =========================
+# KATEGORI
+# =========================
+
+@router.callback_query(
+    F.data == "store_category"
+)
+async def store_category(
+    call: CallbackQuery
+):
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            category,
+            COUNT(*) total
+        FROM files
+        WHERE category IS NOT NULL
+          AND category <> ''
+        GROUP BY category
+        ORDER BY total DESC
+        """
+    )
+
+    if not rows:
+
+        return await call.answer(
+            "Belum ada kategori.",
+            show_alert=True
+        )
+
+    keyboard = []
+
+    for row in rows:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📂 {row['category']} ({row['total']})",
+                    callback_data=f"category:{row['category']}"
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="🏪 Kembali Store",
+                callback_data="store"
+            )
+        ]
+    )
+
+    await call.message.edit_text(
+        "📂 <b>PILIH KATEGORI</b>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=keyboard
+        )
+    )
+
+    await call.answer()
+
+@router.callback_query(
+    F.data.startswith("category:")
+)
+async def category_files(
+    call: CallbackQuery
+):
+
+    category = call.data.split(":", 1)[1]
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            code,
+            title,
+            price
+        FROM files
+        WHERE category=$1
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        category
+    )
+
+    text = (
+        f"📂 <b>{category}</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+    for i, row in enumerate(rows, 1):
+
+        price = (
+            "Gratis"
+            if row["price"] == 0
+            else f"Rp{row['price']:,}"
+        )
+
+        text += (
+            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n"
+            f"💰 {price}\n\n"
+        )
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📂 Kategori",
+                        callback_data="store_category"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🏪 Kembali Store",
+                        callback_data="store"
+                    )
+                ]
+            ]
+        )
+    )
+
+    await call.answer()
