@@ -63,6 +63,16 @@ async def get_pool():
 
     return _pool
 
+# ========================
+# CLOSE DATABASE
+# ========================
+async def close_db():
+    global _pool
+
+    if _pool is not None:
+        await _pool.close()
+        _pool = None
+        logging.info("🔌 Database closed")
 
 # ========================
 # INIT DATABASE (AUTO FIX)
