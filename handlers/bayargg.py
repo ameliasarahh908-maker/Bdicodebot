@@ -190,7 +190,13 @@ async def bayargg_webhook(request: Request):
         now = datetime.now(timezone.utc)
 
         user = await pool.fetchrow(
-            "SELECT vip_until, vvip_expired FROM users WHERE id=$1",
+            """
+            SELECT 
+                vip_expired,
+                vvip_expired
+            FROM users
+            WHERE id=$1
+            """,
             trx["user_id"]
         )
 
@@ -205,8 +211,8 @@ async def bayargg_webhook(request: Request):
             )
         else:
             base_time = (
-                user["vip_until"]
-                if user and user["vip_until"] and user["vip_until"] > now
+                user["vip_expired"]
+                if user and user["vip_expired"] and user["vip_expired"] > now
                 else now
             )
 
@@ -228,9 +234,10 @@ async def bayargg_webhook(request: Request):
                         """
                         UPDATE users
                         SET is_vvip=TRUE,
+                            is_vip=TRUE,
                             vvip_expired=$1,
                             vip=TRUE,
-                            vip_until=$1
+                            vip_expired=$1
                         WHERE id=$2
                         """,
                         expired,
@@ -241,7 +248,8 @@ async def bayargg_webhook(request: Request):
                         """
                         UPDATE users
                         SET vip=TRUE,
-                            vip_until=$1
+                            is_vip=TRUE,
+                            vip_expired=$1
                         WHERE id=$2
                         """,
                         expired,
@@ -255,7 +263,7 @@ async def bayargg_webhook(request: Request):
 
         data = {
             "vip": "1",
-            "vip_until": int(expired.timestamp())
+            "vip_expired": int(expired.timestamp())
         }
 
         if paket_type == "vvip":
