@@ -479,7 +479,10 @@ async def check_payment(call: CallbackQuery):
         # =========================
         await safe_set(
             f"paidmedia:{invoice}",
-            media_list,
+            {
+                "media": media_list,
+                "share_media": file["share_media"]
+            },
             ex=3600
         )
 
@@ -752,9 +755,16 @@ async def send_page(call: CallbackQuery):
 
     try:
         if isinstance(data, str):
-            media_list = json.loads(data)
-        else:
-            media_list = data
+            data = json.loads(data)
+
+        media_list = data["media"]
+
+        share_media = data.get(
+            "share_media",
+            True
+        )
+
+        protect = not share_media
 
     except Exception as e:
         logger.error(
@@ -894,7 +904,7 @@ async def send_page(call: CallbackQuery):
             await call.bot.send_document(
                 chat_id=call.message.chat.id,
                 document=album[0].media,
-                protect_content=True
+                protect_content=protect
             )
 
         else:
@@ -902,7 +912,7 @@ async def send_page(call: CallbackQuery):
             await call.bot.send_media_group(
                 chat_id=call.message.chat.id,
                 media=album,
-                protect_content=True
+                protect_content=protect
             )
 
 
@@ -947,9 +957,16 @@ async def send_all(call: CallbackQuery):
 
     try:
         if isinstance(data, str):
-            media_list = json.loads(data)
-        else:
-            media_list = data
+            data = json.loads(data)
+
+        media_list = data["media"]
+
+        share_media = data.get(
+            "share_media",
+            True
+        )
+
+        protect = not share_media
     except Exception as e:
         logger.error(f"SEND ALL JSON ERROR: {e}")
         return await call.answer(
@@ -983,7 +1000,7 @@ async def send_all(call: CallbackQuery):
                 chat_id=call.message.chat.id,
                 from_chat_id=STORAGE_CHANNEL_ID,
                 message_id=msg_id,
-                protect_content=True
+                protect_content=protect
             )
 
             sukses += 1
