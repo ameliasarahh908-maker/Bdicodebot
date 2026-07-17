@@ -134,65 +134,44 @@ async def buy_vip(call: CallbackQuery):
     try:
 
         payment = await BayarGG.create_payment(
-
             amount=paket["price"],
-
             description=paket["name"],
-
             payment_url="https://www.bayar.gg/pay",
-
             callback_url=(
                 "https://worker-production-87c6.up.railway.app"
                 "/bayargg/webhook"
             ),
-
             customer_name=call.from_user.full_name,
-
             payment_method="qris"
         )
 
-
     except Exception as e:
-
-
         return await safe_edit(
             call.message,
             "❌ <b>Gagal membuat invoice</b>\n\n"
             f"<code>{e}</code>",
         )
 
-
-
     if not payment:
-
         return await safe_edit(
             call.message,
             "❌ Invoice gagal dibuat.",
         )
 
-
-
     invoice_id = payment["invoice_id"]
-
-
     payment_url = payment.get(
         "payment_url"
     )
-
-
     qr_string = payment.get(
         "qris_string"
     )
 
-
     expires_at = None
-
     if payment.get("expires_at"):
         try:
             expires_at = datetime.fromisoformat(
                 payment["expires_at"]
             )
-
             if expires_at.tzinfo is None:
                 expires_at = wib.localize(expires_at)
             else:
