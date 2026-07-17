@@ -137,26 +137,19 @@ async def open_file_by_code(message:Message,code:str):
 
 import re
 
-@router.message(F.text)
-async def auto_get_file(message:Message):
+CODE_REGEX = re.compile(
+    r"(?:zyxfidxbot[A-Za-z0-9_-]+|Zyx\d{8}File\d{8})",
+    re.IGNORECASE
+)
 
-    if not message.text:
-        return
+@router.message(F.text.regexp(CODE_REGEX))
+async def auto_get_file(message: Message):
 
-    text=message.text
-
-    match=re.search(
-        r"(?:zyxfidxbot[A-Za-z0-9_-]+|Zyx\d{8}File\d{8})",
-        text,
-        re.IGNORECASE
-    )
-
+    match = CODE_REGEX.search(message.text)
     if not match:
         return
 
-    code=match.group(0)
-
     await open_file_by_code(
         message,
-        code
+        match.group(0)
     )
