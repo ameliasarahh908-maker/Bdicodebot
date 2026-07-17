@@ -6,88 +6,65 @@ from aiogram.fsm.context import FSMContext
 
 router = Router()
 
-
 @router.message()
 async def notify_user(message: Message, state: FSMContext):
-    """
-    Handler global:
-    - Kirim media -> arahkan ke UPFILE
-    - Kirim kode/link -> arahkan ke GETFILE
-    - Chat biasa -> arahkan ke HELP
-    """
 
-    # Jangan ganggu jika user sedang menggunakan fitur lain
-    current_state = await state.get_state()
-    if current_state:
+    # Jangan ganggu jika sedang memakai FSM
+    if await state.get_state():
         return
 
-    # =====================================
-    # USER MENGIRIM MEDIA
-    # =====================================
+    # =========================
+    # BIARKAN MEDIA DIPROSES HANDLER LAIN
+    # =========================
     if (
-        message.video
-        or message.photo
+        message.photo
+        or message.video
         or message.document
         or message.audio
         or message.animation
         or message.voice
     ):
+        return
+
+    if not message.text:
+        return
+
+    text = message.text.strip()
+
+    # =========================
+    # ABAIKAN REPLY KEYBOARD
+    # =========================
+    if text in {
+        "🏪 Store",
+        "🏆 Top 10 Code",
+        "👤 Akun",
+        "👤 Account",
+        "💎 Upgrade"
+    }:
+        return
+
+    # =========================
+    # FORMAT KODE DIDUKUNG
+    # =========================
+    if re.search(
+        r"Zyx\d{8}File\d{8}",
+        text,
+        re.IGNORECASE
+    ):
+        # biarkan handler getfile.py memproses
+        return
+
+    # =========================
+    # FORMAT MIRIP TAPI SALAH
+    # =========================
+    if re.search(r"zyx|file", text, re.IGNORECASE):
         return await message.reply(
-            "📤 <b>Upload File</b>\n\n"
-            "Untuk mengupload file, silakan tekan tombol <b>UPFILE</b> terlebih dahulu.\n\n"
-            "❓ Jika masih bingung cara menggunakannya, silakan buka menu <b>HELP / BANTUAN</b> untuk melihat panduan lengkap."
+            "❌ Kode file tidak didukung atau formatnya salah."
         )
 
-    # =====================================
-    # USER MENGIRIM TEXT
-    # =====================================
-    if message.text:
-
-        text = message.text.strip()
-
-        is_getfile_code = False
-
-        if "getfile_" in text.lower():
-            is_getfile_code = True
-
-        elif re.search(
-            r"code\s*[:：]\s*[A-Za-z0-9_-]+",
-            text,
-            re.IGNORECASE
-        ):
-            is_getfile_code = True
-
-        elif re.search(
-            r"DecoderFileBot[A-Za-z0-9_-]+",
-            text
-        ):
-            is_getfile_code = True
-
-        # =====================================
-        # USER MENGIRIM KODE FILE
-        # =====================================
-        if is_getfile_code:
-            return await message.reply(
-                "📥 <b>Get File</b>\n\n"
-                "Untuk membuka file, silakan tekan tombol <b>GETFILE</b> terlebih dahulu, kemudian kirim kode file tersebut.\n\n"
-                "❓ Jika masih bingung, silakan buka menu <b>HELP / BANTUAN</b> untuk melihat panduan lengkap."
-            )
-
-        # =====================================
-        # CHAT BIASA
-        # =====================================
-        return await message.reply(
-            "👋 Halo!\n\n"
-            "Silakan pilih menu sesuai kebutuhan:\n\n"
-            "📤 <b>UPFILE</b>\n"
-            "Untuk upload file dan menghasilkan uang.\n\n"
-            "📥 <b>GETFILE</b>\n"
-            "Untuk membuka file menggunakan kode.\n\n"
-            "❓ <b>HELP / BANTUAN</b>\n"
-            "Berisi panduan lengkap mulai dari:\n"
-            "• Cara Upload File\n"
-            "• Cara Get File\n"
-            "• Cara Mendapatkan Cuan\n"
-            "• Cara Withdraw\n"
-            "• Informasi VVIP"
-        )
+    # =========================
+    # CHAT BIASA
+    # =========================
+    await message.reply(
+        "👋 Silakan gunakan tombol menu di bawah."
+    )
