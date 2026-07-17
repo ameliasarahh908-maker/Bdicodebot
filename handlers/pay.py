@@ -781,7 +781,7 @@ async def send_page(call: CallbackQuery):
     media_list = [
         m for m in media_list
         if isinstance(m, dict)
-        and m.get("file_id")
+        and m.get("message_id")
     ]
 
 
@@ -823,7 +823,7 @@ async def send_page(call: CallbackQuery):
     for index,item in enumerate(items):
 
         file_id = item.get(
-            "file_id"
+            "message_id"
         )
 
         if not file_id:
