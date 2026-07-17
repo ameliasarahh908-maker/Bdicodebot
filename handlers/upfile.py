@@ -823,44 +823,43 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
         await state.clear()
 
-
-
-        media_mode = (
-
-            f"💰 Media Mode : Paid "
-            f"(Rp {price:,})"
-            .replace(",", ".")
-
+        media_mode=(
+            f"💰 Media Mode : Paid (Rp {price:,})".replace(",",".")
             if is_paid
-
             else
-
             "🆓 Media Mode : Free"
         )
 
+        video_count=sum(1 for m in media if m.get("type")=="video")
+        photo_count=sum(1 for m in media if m.get("type")=="photo")
+        document_count=sum(1 for m in media if m.get("type")=="document")
 
+        files=[]
 
-        text = (
+        if video_count:
+            files.append(f"{video_count} Videos")
+
+        if photo_count:
+            files.append(f"{photo_count} Photos")
+
+        if document_count:
+            files.append(f"{document_count} Documents")
+
+        files_info=" • ".join(files)
+
+        text=(
             "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
-
-            f"📋 Files : {len(media)}\n"
-
-            f"🔑 Code : "
-            f"<code>{code}</code>\n"
-
+            f"📝 Title : <b>{title}</b>\n"
+            f"📋 Files : {files_info}\n"
+            f"🔑 Code : <code>{code}</code>\n"
             f"{media_mode}\n\n"
-
             f"🔗 Link : {main_link}"
         )
-
-
 
         await message.answer(
             text,
             parse_mode="HTML"
         )
-
-
 
         # =========================
         # LOG CHANNEL
