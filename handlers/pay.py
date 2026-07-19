@@ -730,6 +730,10 @@ async def media_page(call: CallbackQuery):
 @router.callback_query(F.data.startswith("sendpage:"))
 async def send_page(call: CallbackQuery):
 
+    await call.answer(
+        "📦 Mengirim halaman..."
+    )
+
     try:
         _, invoice, page = call.data.split(":")
         page = int(page)
@@ -747,9 +751,8 @@ async def send_page(call: CallbackQuery):
 
 
     if not data:
-        return await call.answer(
+        return await call.message.answer(
             "❌ Session habis",
-            show_alert=True
         )
 
 
@@ -778,9 +781,8 @@ async def send_page(call: CallbackQuery):
             f"MEDIA ERROR {e}"
         )
 
-        return await call.answer(
-            "❌ Data rusak",
-            show_alert=True
+        return await call.message.answer(
+            "❌ Data rusak"
         )
 
 
@@ -795,9 +797,8 @@ async def send_page(call: CallbackQuery):
 
 
     if total == 0:
-        return await call.answer(
-            "❌ Media kosong",
-            show_alert=True
+        return await call.message.answer(
+            "❌ Media kosong"
         )
 
 
@@ -883,14 +884,17 @@ async def send_page(call: CallbackQuery):
 @router.callback_query(F.data.startswith("sendall:"))
 async def send_all(call: CallbackQuery):
 
+    await call.answer(
+        "📦 Mengirim semua file..."
+    )
+
     invoice = call.data.split(":")[1]
 
     data = await safe_get(f"paidmedia:{invoice}")
 
     if not data:
-        return await call.answer(
-            "Session habis",
-            show_alert=True
+        return await call.message.answer(
+            "❌ Session habis"
         )
 
     try:
@@ -910,9 +914,8 @@ async def send_all(call: CallbackQuery):
         protect = not share_media
     except Exception as e:
         logger.error(f"SEND ALL JSON ERROR: {e}")
-        return await call.answer(
-            "❌ Data rusak",
-            show_alert=True
+        return await call.message.answer(
+            "❌ Data rusak"
         )
 
     media_list = [
@@ -921,9 +924,8 @@ async def send_all(call: CallbackQuery):
     ]
 
     if not media_list:
-        return await call.answer(
-            "❌ Media kosong",
-            show_alert=True
+        return await call.message.answer(
+            "❌ Media kosong"
         )
 
     status = await call.message.answer(
@@ -965,5 +967,3 @@ async def send_all(call: CallbackQuery):
         f"📦 Berhasil: {sukses}\n"
         f"❌ Gagal: {gagal}"
     )
-
-    await call.answer()
