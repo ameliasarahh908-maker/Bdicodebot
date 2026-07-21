@@ -19,169 +19,62 @@ LIMIT = 10
 
 
 
-async def show_top_code(
-    call: CallbackQuery,
-    page: int = 1
-):
-
+async def show_top_code(target: Message | CallbackQuery, page: int = 1):
     pool = await get_pool()
 
+    if isinstance(target, CallbackQuery):
+        msg = target.message
+    else:
+        msg = target
 
-    total = await pool.fetchval(
-        """
+    total = await pool.fetchval("""
         SELECT COUNT(*)
         FROM files
-        """
-    )
-
+    """)
 
     if total == 0:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏪 Store", callback_data="store")]
+        ])
+        if isinstance(target, CallbackQuery):
+            await msg.edit_text("❌ Belum ada code.", reply_markup=keyboard)
+            return await target.answer()
+        return await msg.answer("❌ Belum ada code.", reply_markup=keyboard)
 
-        return await call.message.edit_text(
-            "❌ Belum ada code.",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="🏪 Store",
-                            callback_data="store"
-                        )
-                    ]
-                ]
-            )
-        )
+    max_page = ceil(total / LIMIT)
+    page = max(1, min(page, max_page))
+    offset = (page - 1) * LIMIT
 
-
-    max_page = ceil(
-        total / LIMIT
-    )
-
-
-    page = max(
-        1,
-        min(
-            page,
-            max_page
-        )
-    )
-
-
-    offset = (
-        page - 1
-    ) * LIMIT
-
-
-
-    rows = await pool.fetch(
-        """
-        SELECT
-            code,
-            title,
-            view_count
+    rows = await pool.fetch("""
+        SELECT code,title,view_count
         FROM files
-        ORDER BY
-            view_count DESC,
-            created_at DESC
-        LIMIT $1
-        OFFSET $2
-        """,
-        LIMIT,
-        offset
-    )
+        ORDER BY view_count DESC,created_at DESC
+        LIMIT $1 OFFSET $2
+    """, LIMIT, offset)
 
+    text = "🔥 <b>TOP CODE TERPOPULER</b>\n━━━━━━━━━━━━━━━━━━\n\n"
 
-
-    text = (
-        "🔥 <b>TOP CODE TERPOPULER</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-    )
-
-
-
-    for i, row in enumerate(
-        rows,
-        start=offset + 1
-    ):
-
-        if i == 1:
-            rank = "🥇"
-
-        elif i == 2:
-            rank = "🥈"
-
-        elif i == 3:
-            rank = "🥉"
-
-        else:
-            rank = f"{i}."
-
-
-        text += (
-            f"{rank} <b>{row['title']}</b>\n"
-            f"🔑 <code>{row['code']}</code>\n"
-            f"👁 Dibuka : <b>{row['view_count']}</b>x\n\n"
-        )
-
-
+    for i, row in enumerate(rows, start=offset + 1):
+        rank = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        text += f"{rank} <b>{row['title']}</b>\n🔑 <code>{row['code']}</code>\n👁 Dibuka : <b>{row['view_count']}</b>x\n\n"
 
     buttons = []
-
-
-
     if page > 1:
-
-        buttons.append(
-            InlineKeyboardButton(
-                text="⬅️",
-                callback_data=f"top:{page-1}"
-            )
-        )
-
-
-
-    buttons.append(
-        InlineKeyboardButton(
-            text=f"{page}/{max_page}",
-            callback_data="ignore"
-        )
-    )
-
-
-
+        buttons.append(InlineKeyboardButton(text="⬅️", callback_data=f"top:{page-1}"))
+    buttons.append(InlineKeyboardButton(text=f"{page}/{max_page}", callback_data="ignore"))
     if page < max_page:
+        buttons.append(InlineKeyboardButton(text="➡️", callback_data=f"top:{page+1}"))
 
-        buttons.append(
-            InlineKeyboardButton(
-                text="➡️",
-                callback_data=f"top:{page+1}"
-            )
-        )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        buttons,
+        [InlineKeyboardButton(text="🏪 Kembali Store", callback_data="store")]
+    ])
 
-
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            buttons,
-            [
-                InlineKeyboardButton(
-                    text="🏪 Kembali Store",
-                    callback_data="store"
-                )
-            ]
-        ]
-    )
-
-
-
-    await call.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=keyboard
-    )
-
-
-
-    await call.answer()
+    if isinstance(target, CallbackQuery):
+        await msg.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await target.answer()
+    else:
+        await msg.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 
