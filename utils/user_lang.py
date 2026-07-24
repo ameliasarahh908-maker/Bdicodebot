@@ -9,7 +9,7 @@ async def get_user_language(user_id):
         """
         SELECT language
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
