@@ -147,11 +147,18 @@ async def process_start(message, loading, user_id, username):
     # =========================
     await pool.execute(
         """
-        INSERT INTO users (user_id, username, fullname)
-        VALUES ($1,$2,$3)
+        INSERT INTO users (
+            user_id,
+            chat_id,
+            username,
+            full_name
+        )
+        VALUES ($1,$1,$2,$3)
+
         ON CONFLICT (user_id)
         DO UPDATE SET
-        username = EXCLUDED.username
+            username = EXCLUDED.username,
+            full_name = EXCLUDED.full_name
         """,
         user_id,
         username,
