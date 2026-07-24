@@ -6,9 +6,12 @@ async def check_referral_reward(pool, user_id: int):
 
     data = await pool.fetchrow(
         """
-        SELECT referral_count, vip, vvip, vip_until, vvip_until
+        SELECT referral_count,
+               ref_10_claimed,
+               ref_20_claimed,
+               ref_50_claimed
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
@@ -24,17 +27,20 @@ async def check_referral_reward(pool, user_id: int):
     reward_text = None
 
     # =========================
-    # 10 REF → VIP 1 HARI
+    # 10 REF
     # =========================
-    if total == 10:
+    if total >= 10 and not data["ref_10_claimed"]:
+
         vip_until = now + timedelta(days=1)
 
         await pool.execute(
             """
             UPDATE users
-            SET vip=TRUE, vip_until=$1,
-                paid_quota = COALESCE(paid_quota,0) + 1
-            WHERE telegram_id=$2
+            SET vip=TRUE,
+                vip_until=$1,
+                paid_quota = COALESCE(paid_quota,0) + 1,
+                ref_10_claimed=TRUE
+            WHERE user_id=$2
             """,
             vip_until,
             user_id
@@ -43,17 +49,20 @@ async def check_referral_reward(pool, user_id: int):
         reward_text = "🎉 VIP 1 hari + 1 quota"
 
     # =========================
-    # 20 REF → VIP 2 HARI
+    # 20 REF
     # =========================
-    elif total == 20:
+    elif total >= 20 and not data["ref_20_claimed"]:
+
         vip_until = now + timedelta(days=2)
 
         await pool.execute(
             """
             UPDATE users
-            SET vip=TRUE, vip_until=$1,
-                paid_quota = COALESCE(paid_quota,0) + 3
-            WHERE telegram_id=$2
+            SET vip=TRUE,
+                vip_until=$1,
+                paid_quota = COALESCE(paid_quota,0) + 3,
+                ref_20_claimed=TRUE
+            WHERE user_id=$2
             """,
             vip_until,
             user_id
@@ -62,16 +71,19 @@ async def check_referral_reward(pool, user_id: int):
         reward_text = "🔥 VIP 2 hari + 3 quota"
 
     # =========================
-    # 50 REF → VVIP 7 HARI
+    # 50 REF
     # =========================
-    elif total == 50:
+    elif total >= 50 and not data["ref_50_claimed"]:
+
         vvip_until = now + timedelta(days=7)
 
         await pool.execute(
             """
             UPDATE users
-            SET vvip=TRUE, vvip_until=$1
-            WHERE telegram_id=$2
+            SET vvip=TRUE,
+                vvip_until=$1,
+                ref_50_claimed=TRUE
+            WHERE user_id=$2
             """,
             vvip_until,
             user_id
