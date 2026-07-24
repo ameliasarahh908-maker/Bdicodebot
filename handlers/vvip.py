@@ -142,7 +142,6 @@ async def buy_vip(call: CallbackQuery):
         payment = await BayarGG.create_payment(
             amount=paket["price"],
             description=paket["name"],
-            callback_url="https://zyxfidxbot.up.railway.app/bayargg/webhook",
             customer_name=call.from_user.full_name,
         )
 
