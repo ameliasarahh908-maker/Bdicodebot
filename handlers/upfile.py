@@ -95,17 +95,24 @@ async def receive_media(message: Message, state: FSMContext):
             user = await pool.fetchrow("""
                 SELECT is_admin, vvip, vvip_until
                 FROM users
-                WHERE id=$1
+                WHERE chat_id=$1
             """, user_id)
 
             from datetime import datetime, timezone
 
             now = datetime.now(timezone.utc)
 
-            is_admin = user["is_admin"]
+            is_admin = user["is_admin"] if user else False
 
-            vvip = user["vvip"]
-            vvip_until = user["vvip_until"]
+            vvip = user["vvip"] if user else False
+            vvip_until = user["vvip_until"] if user else None
+
+            from datetime import datetime, timezone
+
+            now = datetime.now(timezone.utc)
+
+            if vvip_until and vvip_until.tzinfo is None:
+                vvip_until = vvip_until.replace(tzinfo=timezone.utc)
 
             is_vvip_active = (
                 vvip and
@@ -253,7 +260,8 @@ async def receive_media(message: Message, state: FSMContext):
         # =========================
 
         if any(
-            x.get("message_id") == storage_message_id
+            x.get("message_id") == storage_message_id or
+            x.get("file_id") == file_id
             for x in media
         ):
             return
@@ -664,13 +672,13 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         await pool.execute(
             """
             INSERT INTO users(
-                id,
+                chat_id,
                 username,
                 full_name
             )
             VALUES($1,$2,$3)
 
-            ON CONFLICT(id)
+            ON CONFLICT(chat_id)
             DO UPDATE SET
                 username=EXCLUDED.username,
                 full_name=EXCLUDED.full_name
@@ -686,30 +694,9 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         # GENERATE CODE
         # =========================
 
-        while True:
+        import uuid
 
-            code = (
-                "Zyx"
-                + str(random.randint(10000000,99999999))
-                + "File"
-                + str(random.randint(10000000,99999999))
-            )
-
-
-            exists = await pool.fetchval(
-                """
-                SELECT 1
-                FROM files
-                WHERE code=$1
-                """,
-                code
-            )
-
-
-            if not exists:
-                break
-
-
+        code = "Zyx" + uuid.uuid4().hex[:12]
 
         main_link = (
             f"https://t.me/{BOT_USERNAME}"
@@ -828,8 +815,6 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 values
             )
 
-
-
         await state.clear()
 
         media_mode=(
@@ -865,9 +850,21 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             f"🔗 Link : {main_link}"
         )
 
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🔗 Open Link",
+                        url=main_link
+                    )
+                ]
+            ]
+        )
+
         await message.answer(
             text,
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=kb
         )
 
         # =========================
