@@ -3,7 +3,7 @@ import hashlib
 import logging
 import asyncio
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Request
 
@@ -25,7 +25,6 @@ def secure_compare(a: str, b: str):
 
 @router.post("/webhook")
 async def bayargg_webhook(request: Request):
-    body = await request.body()
 
     signature = request.headers.get("X-Webhook-Signature", "")
     timestamp = request.headers.get("X-Webhook-Timestamp", "")
@@ -82,64 +81,78 @@ async def bayargg_webhook(request: Request):
         # =================================
         # FILE PAYMENT
         # =================================
+
         purchase = await pool.fetchrow(
-            "SELECT * FROM file_purchases WHERE payment_id=$1",
+            """
+            SELECT *
+            FROM file_purchases
+            WHERE order_id=$1
+            """,
             invoice_id
         )
+
 
         if purchase:
 
             if purchase["status"] == "paid":
                 return {"success": True}
 
+
             file = await pool.fetchrow(
-                "SELECT * FROM files WHERE code=$1",
+                """
+                SELECT *
+                FROM files
+                WHERE code=$1
+                """,
                 purchase["file_code"]
             )
+
 
             if not file:
                 return {"success": False}
 
-            income = int(file["price"] * 0.9)
 
-            async with pool.acquire() as conn:
-                async with conn.transaction():
 
-                    await conn.execute(
-                        """
-                        UPDATE file_purchases
-                        SET status='paid', paid_at=NOW()
-                        WHERE payment_id=$1
-                        """,
-                        invoice_id
-                    )
+            # UPDATE STATUS PEMBAYARAN
+            await pool.execute(
+                """
+                UPDATE file_purchases
+                SET 
+                    status='paid',
+                    paid_at=NOW()
+                WHERE order_id=$1
+                """,
+                invoice_id
+            )
 
-                    await conn.execute(
-                        """
-                        UPDATE users
-                        SET balance=balance+$1,
-                            total_sales=total_sales+1,
-                            total_income=total_income+$1
-                        WHERE telegram_id=$2
-                        """,
-                        income,
-                        file["owner_id"]
-                    )
 
-            # hapus QR
+
+            # HAPUS QR PAYMENT
             try:
-                if purchase["qr_chat_id"] and purchase["qr_message_id"]:
+
+                if (
+                    purchase["qr_chat_id"]
+                    and purchase["qr_message_id"]
+                ):
+
                     await bot.delete_message(
                         chat_id=purchase["qr_chat_id"],
                         message_id=purchase["qr_message_id"]
                     )
-            except:
+
+            except Exception:
                 pass
 
-            # kirim file
+
+
+            # KIRIM FILE
             success = False
+
+
             for _ in range(3):
+
                 try:
+
                     await send_page(
                         bot=bot,
                         chat_id=purchase["user_id"],
@@ -147,23 +160,39 @@ async def bayargg_webhook(request: Request):
                         code=purchase["file_code"],
                         page=1
                     )
+
                     success = True
                     break
-                except:
+
+
+                except Exception as e:
+
+                    logger.warning(
+                        f"SEND FILE RETRY ERROR: {e}"
+                    )
+
                     await asyncio.sleep(1)
 
+
+
             if success:
+
                 await bot.send_message(
                     purchase["user_id"],
-                    "✅ Pembayaran berhasil! File dikirim."
-                )
-            else:
-                await bot.send_message(
-                    purchase["user_id"],
-                    "⚠️ File gagal dikirim, hubungi admin."
+                    "✅ Pembayaran berhasil!\n\n📦 File sudah dikirim."
                 )
 
-            return {"success": True}
+            else:
+
+                await bot.send_message(
+                    purchase["user_id"],
+                    "⚠️ Pembayaran berhasil, tapi file gagal dikirim. Hubungi admin."
+                )
+
+
+            return {
+                "success": True
+            }
 
         # =================================
         # VIP / VVIP PAYMENT
@@ -187,7 +216,7 @@ async def bayargg_webhook(request: Request):
 
         paket_type = paket.get("type", "vip")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
 
         user = await pool.fetchrow(
             """
@@ -195,7 +224,7 @@ async def bayargg_webhook(request: Request):
                 vip_expired,
                 vvip_expired
             FROM users
-            WHERE id=$1
+            WHERE user_id=$1
             """,
             trx["user_id"]
         )
@@ -238,7 +267,7 @@ async def bayargg_webhook(request: Request):
                             vvip_expired=$1,
                             vip=TRUE,
                             vip_expired=$1
-                        WHERE id=$2
+                        WHERE user_id=$2
                         """,
                         expired,
                         trx["user_id"]
@@ -250,7 +279,7 @@ async def bayargg_webhook(request: Request):
                         SET vip=TRUE,
                             is_vip=TRUE,
                             vip_expired=$1
-                        WHERE id=$2
+                        WHERE user_id=$2
                         """,
                         expired,
                         trx["user_id"]
@@ -259,20 +288,9 @@ async def bayargg_webhook(request: Request):
         # =========================
         # 🔥 SYNC REDIS (WAJIB)
         # =========================
-        redis_key = f"user:{trx['user_id']}"
-
-        data = {
-            "vip": "1",
-            "vip_expired": int(expired.timestamp())
-        }
-
-        if paket_type == "vvip":
-            data.update({
-                "is_vvip": "1",
-                "vvip_expired": int(expired.timestamp())
-            })
-
-        await redis_client.hset(redis_key, mapping=data)
+        await redis_client.delete(
+            f"user:{trx['user_id']}"
+        )
 
         # optional: clear cache lain
         await redis_client.delete(f"user_cache:{trx['user_id']}")
