@@ -25,7 +25,11 @@ async def start_cmd(message: Message, state: FSMContext):
     await state.clear()
 
     user_id = message.from_user.id
-    username = message.from_user.username or "unknown"
+    username = (
+        f"@{message.from_user.username}"
+        if message.from_user.username
+        else message.from_user.full_name
+    )
 
 
     # =========================
@@ -143,16 +147,15 @@ async def process_start(message, loading, user_id, username):
     # =========================
     await pool.execute(
         """
-        INSERT INTO users (telegram_id, username, chat_id, balance, language)
-        VALUES ($1,$2,$3,0,NULL)
-        ON CONFLICT (telegram_id)
+        INSERT INTO users (user_id, username, fullname)
+        VALUES ($1,$2,$3)
+        ON CONFLICT (user_id)
         DO UPDATE SET
-            username = EXCLUDED.username,
-            chat_id = EXCLUDED.chat_id
+        username = EXCLUDED.username
         """,
         user_id,
         username,
-        message.chat.id
+        message.from_user.full_name
     )
 
     # =========================
@@ -167,7 +170,7 @@ async def process_start(message, loading, user_id, username):
 
             # cek apakah user sudah pernah direfer
             existing = await pool.fetchval(
-                "SELECT referred_by FROM users WHERE telegram_id=$1",
+                "SELECT referred_by FROM users WHERE user_id=$1",
                 user_id
             )
 
@@ -175,7 +178,7 @@ async def process_start(message, loading, user_id, username):
 
                 # simpan siapa yang ngundang
                 await pool.execute(
-                    "UPDATE users SET referred_by=$1 WHERE telegram_id=$2",
+                    "UPDATE users SET referred_by=$1 WHERE user_id=$2",
                     int(ref_id),
                     user_id
                 )
@@ -185,7 +188,7 @@ async def process_start(message, loading, user_id, username):
                     """
                     UPDATE users
                     SET referral_count = COALESCE(referral_count, 0) + 1
-                    WHERE telegram_id=$1
+                    WHERE user_id=$1
                     """,
                     int(ref_id)
                 )
@@ -210,7 +213,7 @@ async def process_start(message, loading, user_id, username):
     # GET USER
     # =========================
     user = await pool.fetchrow(
-        "SELECT username, language FROM users WHERE telegram_id=$1",
+        "SELECT username, language FROM users WHERE user_id=$1",
         user_id
     )
 
@@ -218,6 +221,7 @@ async def process_start(message, loading, user_id, username):
     # GET STATUS
     # =========================
     status = await get_user_status(pool, user_id)
+    status = (status or "free").lower()
 
     # =========================
     # OPEN HOME
@@ -252,7 +256,7 @@ async def render_home_fast(
             "📦 Selamat datang di bot penyimpanan file.\n\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"🆔 ID : <code>{user_id}</code>\n"
-            f"👤 Username : @{username}\n"
+            f"👤 Username : {username}\n"
             f"💎 Status : <b>{status}</b>\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
             "👇 Silakan pilih menu di bawah."
@@ -263,7 +267,7 @@ async def render_home_fast(
             "📦 Welcome to our file storage bot.\n\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"🆔 ID : <code>{user_id}</code>\n"
-            f"👤 Username : @{username}\n"
+            f"👤 Username : {username}\n"
             f"💎 Status : <b>{status}</b>\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
             "👇 Please choose a menu below."
@@ -309,7 +313,7 @@ async def back_home(call: CallbackQuery, state: FSMContext):
     pool = await get_pool()
 
     user = await pool.fetchrow(
-        "SELECT username FROM users WHERE telegram_id=$1",
+        "SELECT username FROM users WHERE user_id=$1",
         user_id
     )
 
