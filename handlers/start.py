@@ -6,8 +6,6 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from keyboards.language import language_kb
-from utils.language import translate
 from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
@@ -222,19 +220,6 @@ async def process_start(message, loading, user_id, username):
     status = await get_user_status(pool, user_id)
 
     # =========================
-    # FIRST TIME LANGUAGE
-    # =========================
-    if not user["language"]:
-        await loading.edit_text(
-            "*𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓*\n\n"
-            "🌐 *SELECT LANGUAGE*\n\n"
-            "_Choose your preferred language._",
-            reply_markup=language_kb,
-            parse_mode="Markdown"
-        )
-        return
-
-    # =========================
     # OPEN HOME
     # =========================
     await render_home_fast(
@@ -259,12 +244,7 @@ async def render_home_fast(
 
     pool = await get_pool()
 
-    lang = await pool.fetchval(
-        "SELECT language FROM users WHERE telegram_id=$1",
-        user_id
-    )
-
-    lang = lang or "en"
+    lang = "id"
 
     if lang == "id":
         text = (
