@@ -93,27 +93,36 @@ async def receive_media(message: Message, state: FSMContext):
             pool = await get_pool()
 
             user = await pool.fetchrow("""
-                SELECT is_admin,is_vvip,vvip_expired
+                SELECT is_admin, vvip, vvip_until
                 FROM users
                 WHERE id=$1
             """, user_id)
 
-            if not user:
-                return
-
             from datetime import datetime, timezone
 
-            allowed = user["is_admin"] or (
-                user["is_vvip"] and (
-                    not user["vvip_expired"] or
-                    user["vvip_expired"] > datetime.now(timezone.utc)
-                )
+            now = datetime.now(timezone.utc)
+
+            is_admin = user["is_admin"]
+
+            vvip = user["vvip"]
+            vvip_until = user["vvip_until"]
+
+            is_vvip_active = (
+                vvip and
+                vvip_until and
+                vvip_until > now
             )
+
+            allowed = is_admin or is_vvip_active
 
             if not allowed:
                 return await message.answer(
-                    "❌ Fitur upload hanya tersedia untuk pengguna VVIP.\n\n"
-                    "Silakan upgrade akun untuk menggunakan fitur ini."
+                    "🚫 <b>AKSES DITOLAK</b>\n\n"
+                    "📦 Upload hanya untuk:\n"
+                    "👑 VVIP & Admin\n\n"
+                    "💎 Status kamu masih VIP / FREE\n"
+                    "Upgrade ke <b>VVIP</b> untuk mulai upload 🚀",
+                    parse_mode="HTML"
                 )
 
             if not await check_force_sub(message.bot, user_id):
