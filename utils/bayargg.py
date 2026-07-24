@@ -69,7 +69,12 @@ class BayarGG:
             logger.info(f"STATUS: {response.status_code}")
             logger.info(f"BODY: {response.text}")
 
-            response.raise_for_status()
+            if response.status_code >= 400:
+                logger.error(
+                    "BAYARGG ERROR JSON: %s",
+                    response.text
+                )
+                return None
 
             raw = response.json()
 
