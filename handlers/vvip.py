@@ -143,7 +143,7 @@ async def buy_vip(call: CallbackQuery):
             amount=paket["price"],
             description=paket["name"],
             payment_url="https://www.bayar.gg/pay",
-            callback_url="zyxfidxbot.up.railway.app/bayargg/webhook",
+            callback_url="https://zyxfidxbot.up.railway.app//bayargg/webhook",
             customer_name=call.from_user.full_name,
             payment_method="qris"
         )
