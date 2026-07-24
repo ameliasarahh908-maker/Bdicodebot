@@ -246,6 +246,10 @@ async def render_home_fast(
     status
 ):
 
+    bot_username = (await bot.me()).username
+
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+
     pool = await get_pool()
 
     lang = "id"
@@ -259,6 +263,7 @@ async def render_home_fast(
             f"👤 Username : {username}\n"
             f"💎 Status : <b>{status}</b>\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
+            f"👥 Referral kamu:\n{ref_link}\n\n"
             "👇 Silakan pilih menu di bawah."
         )
     else:
