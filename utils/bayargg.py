@@ -32,6 +32,10 @@ class BayarGG:
             f"API KEY LENGTH: {len(BAYARGG_API_KEY)}"
         )
 
+        logger.info(
+            f"HEADERS: {headers.keys()}"
+        )
+
         payload = {
             "amount": amount,
             "description": description,
