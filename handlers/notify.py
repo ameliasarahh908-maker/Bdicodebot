@@ -39,7 +39,8 @@ async def notify_user(message: Message, state: FSMContext):
         "🏆 Top 10 Code",
         "👤 Akun",
         "👤 Account",
-        "💎 Upgrade"
+        "💎 Upgrade",
+        "🎁 Reward"
     }:
         return
 
@@ -66,5 +67,5 @@ async def notify_user(message: Message, state: FSMContext):
     # CHAT BIASA
     # =========================
     await message.reply(
-        "👋 Silakan gunakan tombol menu di bawah."
+        "👋 Silakan gunakan tombol menu di bawah untuk cari code."
     )
