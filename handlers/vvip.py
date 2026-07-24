@@ -142,13 +142,11 @@ async def buy_vip(call: CallbackQuery):
         payment = await BayarGG.create_payment(
             amount=paket["price"],
             description=paket["name"],
-            payment_url="https://www.bayar.gg/pay",
             callback_url=(
                 "https://worker-production-87c6.up.railway.app"
                 "/bayargg/webhook"
             ),
             customer_name=call.from_user.full_name,
-            payment_method="qris"
         )
 
     except Exception as e:
