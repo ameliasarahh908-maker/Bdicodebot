@@ -86,7 +86,7 @@ async def bayargg_webhook(request: Request):
             """
             SELECT *
             FROM file_purchases
-            WHERE order_id=$1
+            WHERE payment_id=$1
             """,
             invoice_id
         )
@@ -120,7 +120,7 @@ async def bayargg_webhook(request: Request):
                 SET 
                     status='paid',
                     paid_at=NOW()
-                WHERE order_id=$1
+                WHERE payment_id=$1
                 """,
                 invoice_id
             )
