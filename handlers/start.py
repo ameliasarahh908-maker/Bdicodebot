@@ -163,8 +163,8 @@ async def process_start(message, loading, user_id, username):
     # =========================
     args = message.text.split(maxsplit=1)
 
-    if len(args) > 1:
-        ref_id = args[1].strip()
+    if len(args) > 1 and args[1].startswith("ref_"):
+        ref_id = args[1].replace("ref_", "", 1)
 
         if ref_id.isdigit() and int(ref_id) != user_id:
 
