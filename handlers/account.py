@@ -12,6 +12,8 @@ from database import get_pool
 
 router = Router()
 
+BOT_USERNAME = "Zyxfidzbot"  # 🔥 ganti ini
+
 
 async def open_account(target, user_id):
 
@@ -19,13 +21,22 @@ async def open_account(target, user_id):
 
     user = await pool.fetchrow(
         """
-        SELECT vip, vip_until
+        SELECT vip, vip_until, referral_count
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
 
+    # =========================
+    # REFERRAL
+    # =========================
+    referral_count = user["referral_count"] if user else 0
+    ref_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
+
+    # =========================
+    # VIP STATUS
+    # =========================
     vip_status = "🆓 FREE"
     vip_type = "-"
     remaining = "-"
@@ -44,7 +55,7 @@ async def open_account(target, user_id):
         if vip_until > now:
 
             delta = vip_until - now
-            remaining_days = delta.days
+            remaining_days = max(1, delta.days)
 
             vip_status = "👑 VIP ACTIVE"
 
@@ -59,10 +70,19 @@ async def open_account(target, user_id):
             duration = f"{remaining_days} hari"
 
         else:
+            # 🔥 AUTO DOWNGRADE
+            await pool.execute(
+                "UPDATE users SET vip=false, vip_until=NULL WHERE user_id=$1",
+                user_id
+            )
+
             vip_status = "❌ EXPIRED"
             remaining = "0 hari"
             duration = "0 hari"
 
+    # =========================
+    # TEXT UI
+    # =========================
     text = (
         "━━━━━━━━━━━━━━\n"
         "👤 <b>ACCOUNT INFO</b>\n"
@@ -70,14 +90,20 @@ async def open_account(target, user_id):
         f"🆔 User ID : <code>{user_id}</code>\n"
         f"💎 Status : {vip_status}\n"
         f"📦 Tipe : {vip_type}\n"
-        f"⏳ Sisa VIP : {remaining}\n"
-        f"📊 Durasi VIP : {duration}\n\n"
-        "━━━━━━━━━━━━━━"
+        f"⏳ Sisa VIP : {remaining}\n\n"
+
+        "🎯 <b>REFERRAL</b>\n"
+        f"👥 Total Undangan : <b>{referral_count}</b>\n"
+        f"🔗 Link Kamu:\n"
+        f"<code>{ref_link}</code>\n\n"
+
+        "━━━━━━━━━━━━━━\n"
+        "🚀 Ajak teman & dapat reward!"
     )
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💎 VVIP", callback_data="vvip")],
+            [InlineKeyboardButton(text="💎 Upgrade VIP", callback_data="vip")],
             [InlineKeyboardButton(text="🔙 Kembali", callback_data="home")]
         ]
     )
@@ -98,16 +124,10 @@ async def open_account(target, user_id):
 
 @router.callback_query(F.data == "account")
 async def account_handler(call: CallbackQuery):
-    await open_account(
-        call.message,
-        call.from_user.id
-    )
+    await open_account(call.message, call.from_user.id)
     await call.answer()
 
 
 @router.message(F.text.in_(["👤 Akun", "👤 Account"]))
 async def account(message: Message):
-    await open_account(
-        message,
-        message.from_user.id
-    )
+    await open_account(message, message.from_user.id)
