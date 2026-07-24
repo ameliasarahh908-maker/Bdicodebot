@@ -57,12 +57,7 @@ async def open_file_by_code(message:Message,code:str):
 
     if expires_at:
 
-        if hasattr(expires_at,"timestamp"):
-            expired=expires_at.timestamp()<time.time()
-        else:
-            expired=expires_at<int(time.time())
-
-        if expired:
+        if expires_at.timestamp() < time.time():
             return await message.answer(
                 "❌ File sudah kadaluarsa."
             )
@@ -103,7 +98,7 @@ async def open_file_by_code(message:Message,code:str):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"💳 BAYAR Rp {price:,}".replace(",","."),
+                        text=f"💳 BAYAR Rp {price:,.0f}".replace(",","."),
                         callback_data=f"pay:{code}"
                     )
                 ]
@@ -138,7 +133,7 @@ async def open_file_by_code(message:Message,code:str):
 import re
 
 CODE_REGEX = re.compile(
-    r"(?:zyxfidxbot[A-Za-z0-9_-]+|Zyx\d{8}File\d{8})",
+    r"(?:Tzy_[A-Za-z0-9_-]+|Zyx[A-Za-z0-9_-]+)",
     re.IGNORECASE
 )
 
