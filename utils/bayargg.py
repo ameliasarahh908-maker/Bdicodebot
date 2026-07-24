@@ -28,6 +28,10 @@ class BayarGG:
             "Content-Type": "application/json"
         }
 
+        logger.info(
+            f"API KEY LENGTH: {len(BAYARGG_API_KEY)}"
+        )
+
         payload = {
             "amount": amount,
             "description": description,
