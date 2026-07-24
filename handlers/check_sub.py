@@ -7,6 +7,7 @@ from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
 from handlers.start import render_home_fast
 from database import get_pool
+from utils.user import get_user_status
 
 router = Router()
 
@@ -20,73 +21,112 @@ async def check_sub_callback(call: CallbackQuery):
     logging.info(f"CHECK SUB CLICKED: {user_id}")
 
     try:
+
         ok = await check_force_sub(call.bot, user_id)
+
         logging.info(f"FORCE SUB RESULT: {ok}")
 
         if not ok:
+
             await call.answer(
                 "❌ Kamu belum join semua channel.",
                 show_alert=True
             )
 
             await call.message.edit_text(
-                "❌ Kamu belum join semua channel.\n\nSilakan join dulu lalu klik CHECK lagi.",
+                "❌ Kamu belum join semua channel.\n\n"
+                "Silakan join dulu lalu klik CHECK lagi.",
                 reply_markup=join_kb()
             )
+
             return
+
 
         pool = await get_pool()
 
+
         # =========================
-        # AUTO CREATE USER (SAFE FIX)
+        # CREATE / UPDATE USER
         # =========================
         await pool.execute(
             """
-            INSERT INTO users (telegram_id, username, balance)
-            VALUES ($1, $2, 0)
-            ON CONFLICT (telegram_id) DO NOTHING
+            INSERT INTO users (
+                user_id,
+                chat_id,
+                username,
+                full_name,
+                balance
+            )
+            VALUES ($1, $1, $2, $3, 0)
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                username = EXCLUDED.username,
+                full_name = EXCLUDED.full_name
             """,
             user_id,
-            username
+            username,
+            call.from_user.full_name
         )
+
 
         # =========================
         # FETCH USER
         # =========================
         user = await pool.fetchrow(
             """
-            SELECT username, balance
+            SELECT username
             FROM users
-            WHERE telegram_id=$1
+            WHERE user_id=$1
             """,
             user_id
         )
 
-        # =========================
-        # SAFE FALLBACK (ANTI CRASH)
-        # =========================
+
         if not user:
-            logging.warning(f"USER STILL NULL: {user_id}")
+
+            logging.warning(
+                f"USER STILL NULL: {user_id}"
+            )
 
             await render_home_fast(
                 call.bot,
                 call.message,
                 user_id,
                 username,
-                0
+                "free"
             )
+
             return
 
-        await call.answer("✅ Verifikasi berhasil")
+
+        status = await get_user_status(
+            pool,
+            user_id
+        )
+
+
+        await call.answer(
+            "✅ Verifikasi berhasil"
+        )
+
 
         await render_home_fast(
             call.bot,
             call.message,
             user_id,
             user["username"] or username,
-            user["balance"] or 0
+            status
         )
 
+
     except Exception as e:
-        logging.exception(f"CHECK SUB ERROR: {e}")
-        await call.answer("❌ SYSTEM ERROR", show_alert=True)
+
+        logging.exception(
+            f"CHECK SUB ERROR: {e}"
+        )
+
+        await call.answer(
+            "❌ SYSTEM ERROR",
+            show_alert=True
+        )
