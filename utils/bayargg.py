@@ -39,8 +39,6 @@ class BayarGG:
         payload = {
             "amount": amount,
             "description": description,
-            "payment_url": payment_url,
-            "payment_method": payment_method,
         }
 
         if callback_url:
