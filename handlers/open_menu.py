@@ -7,6 +7,7 @@ from aiogram.types import (
 
 from database import get_pool
 from handlers.sendall import send_all
+from utils.user import get_user_status  # 🔥 TAMBAH INI
 
 router = Router()
 
@@ -59,9 +60,17 @@ async def open_all(call: CallbackQuery):
             pass
         return
 
+    # 🔥 AMBIL USER LEVEL
+    user_level = await get_user_status(
+        pool,
+        call.from_user.id
+    )
+
+    # 🔥 KIRIM KE send_all
     await send_all(
         bot=call.bot,
         chat_id=call.message.chat.id,
         code=code,
-        file=file
+        file=file,
+        user_level=user_level  # 🔥 WAJIB
     )
