@@ -62,7 +62,7 @@ async def get_user_status(pool,user_id:int):
             is_vvip,
             vvip_expired
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
@@ -86,7 +86,7 @@ async def get_user_status(pool,user_id:int):
     # =========================
 
     if (
-        user["is_vvip"]
+        user["is_vvip"] is True
         and vvip_expired
         and vvip_expired > now
     ):
@@ -94,7 +94,7 @@ async def get_user_status(pool,user_id:int):
 
 
     if (
-        user["vvip"]
+        user["vvip"] is True 
         and vvip_until
         and vvip_until > now
     ):
@@ -107,7 +107,7 @@ async def get_user_status(pool,user_id:int):
     # =========================
 
     if (
-        user["is_vip"]
+        user["is_vip"] is True
         and vip_expired
         and vip_expired > now
     ):
@@ -115,7 +115,7 @@ async def get_user_status(pool,user_id:int):
 
 
     if (
-        user["vip"]
+        user["vip"] is True
         and vip_until
         and vip_until > now
     ):
@@ -134,7 +134,7 @@ async def get_user_status(pool,user_id:int):
             is_vip=false,
             is_vvip=false,
             plan='free'
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
@@ -160,7 +160,7 @@ async def set_vip(user_id:int,days:int=30):
         """
         SELECT vip_until
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
@@ -188,7 +188,7 @@ async def set_vip(user_id:int,days:int=30):
             vip_expired=$1,
             plan='vip',
             expired_at=$1
-        WHERE telegram_id=$2
+        WHERE user_id=$2
         """,
         expired,
         user_id
@@ -215,7 +215,7 @@ async def set_vvip(user_id:int,days:int=7):
         """
         SELECT vvip_expired
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
@@ -251,7 +251,7 @@ async def set_vvip(user_id:int,days:int=7):
             plan='vvip',
             expired_at=$1
 
-        WHERE telegram_id=$2
+        WHERE user_id=$2
         """,
         expired,
         user_id
@@ -285,7 +285,7 @@ async def set_free(user_id:int):
             vvip_expired=NULL,
             plan='free',
             expired_at=NULL
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         user_id
     )
