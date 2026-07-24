@@ -11,11 +11,13 @@ async def home_kb(user_id):
         top = "🏆 Top 10 Code"
         account = "👤 Akun"
         upgrade = "💎 Upgrade"
+        reward = "🎁 Reward"
     else:
         store = "🏪 Store"
         top = "🏆 Top 10 Code"
         account = "👤 Account"
         upgrade = "💎 Upgrade"
+        reward = "🎁 Reward"
 
 
     return ReplyKeyboardMarkup(
@@ -27,6 +29,9 @@ async def home_kb(user_id):
             [
                 KeyboardButton(text=account),
                 KeyboardButton(text=upgrade)
+            ],
+            [
+                KeyboardButton(text=reward)
             ]
         ],
         resize_keyboard=True
