@@ -141,7 +141,6 @@ async def buy_vip(call: CallbackQuery):
 
         payment = await BayarGG.create_payment(
             amount=paket["price"],
-            description=paket["name"],
             customer_name=call.from_user.full_name,
         )
 
