@@ -12,9 +12,7 @@ from database import get_pool
 
 router = Router()
 
-
 LIMIT = 10
-
 
 
 async def show_best_seller(
@@ -33,13 +31,14 @@ async def show_best_seller(
     )
 
 
-    if total == 0:
+    if not total:
 
-        return await call.message.edit_text(
-            "❌ Belum ada data.",
+        await call.message.edit_text(
+            "❌ Belum ada data code.",
             reply_markup=back_keyboard()
         )
 
+        return
 
 
     max_page = ceil(
@@ -61,17 +60,16 @@ async def show_best_seller(
     ) * LIMIT
 
 
-
     rows = await pool.fetch(
         """
         SELECT
             code,
             title,
-            buy_count,
-            price
+            COALESCE(buy_count,0) AS buy_count,
+            COALESCE(price,0) AS price
         FROM files
         ORDER BY
-            buy_count DESC,
+            COALESCE(buy_count,0) DESC,
             created_at DESC
         LIMIT $1
         OFFSET $2
@@ -81,12 +79,10 @@ async def show_best_seller(
     )
 
 
-
     text = (
-        "📈 <b>CODE TERLARIS</b>\n"
+        "🏆 <b>CODE TERLARIS</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
     )
-
 
 
     for i, row in enumerate(
@@ -94,34 +90,33 @@ async def show_best_seller(
         start=offset + 1
     ):
 
+        price = row["price"]
 
-        harga = (
-            "Gratis"
-            if row["price"] == 0
-            else f"Rp{row['price']:,}"
-        )
+
+        if price == 0:
+            harga = "Gratis"
+        else:
+            harga = f"Rp{price:,}"
+
+
+        title = row["title"] or "Tanpa Judul"
 
 
         text += (
-            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"{i}. 📌 <b>{title}</b>\n"
             f"🔑 <code>{row['code']}</code>\n"
-            f"🛒 Dibeli : <b>{row['buy_count']}</b>x\n"
-            f"💰 Harga : {harga}\n\n"
+            f"🛒 Dibeli : <b>{row['buy_count']}x</b>\n"
+            f"💰 Harga : <b>{harga}</b>\n\n"
         )
-
-
-
-    keyboard = page_keyboard(
-        page,
-        max_page
-    )
-
 
 
     await call.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=page_keyboard(
+            page,
+            max_page
+        )
     )
 
 
@@ -130,8 +125,8 @@ async def show_best_seller(
 
 
 def page_keyboard(
-    page,
-    max_page
+    page: int,
+    max_page: int
 ):
 
     buttons = []
@@ -167,7 +162,6 @@ def page_keyboard(
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
-
             buttons,
 
             [
@@ -176,7 +170,6 @@ def page_keyboard(
                     callback_data="store"
                 )
             ]
-
         ]
     )
 
