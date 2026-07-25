@@ -8,6 +8,7 @@ from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 
 from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
@@ -83,12 +84,17 @@ async def process_start(message, loading, user_id, username):
         sub = True
 
     if not sub:
-        return await loading.edit_text(
-            "❌ *JOIN REQUIRED*\n\n"
-            "_Please join all required channels first._",
-            reply_markup=join_kb(),
-            parse_mode="Markdown"
-        )
+        try:
+            await loading.edit_text(
+                "❌ *JOIN REQUIRED*\n\n"
+                "_Please join all required channels first._",
+                reply_markup=join_kb(),
+                parse_mode="Markdown"
+            )
+        except TelegramBadRequest as e:
+            if "message is not modified" not in str(e):
+                raise
+        return
 
     pool = await get_pool()
 
@@ -226,7 +232,14 @@ async def render_home_fast(bot, message, user_id, username, status):
             parse_mode="HTML",
             reply_markup=await home_kb(user_id)
         )
-    except:
+
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            return
+
+        raise
+
+    except Exception:
         await bot.send_message(
             user_id,
             text,
