@@ -2,6 +2,7 @@ import logging
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+from aiogram.exceptions import TelegramBadRequest
 
 from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
@@ -33,11 +34,15 @@ async def check_sub_callback(call: CallbackQuery):
                 show_alert=True
             )
 
-            await call.message.edit_text(
-                "❌ Kamu belum join semua channel.\n\n"
-                "Silakan join dulu lalu klik CHECK lagi.",
-                reply_markup=join_kb()
-            )
+            try:
+                await call.message.edit_text(
+                    "❌ Kamu belum join semua channel.\n\n"
+                    "Silakan join dulu lalu klik CHECK lagi.",
+                    reply_markup=join_kb()
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e):
+                    raise
 
             return
 
