@@ -14,7 +14,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from config import CHANNEL_ID, STORAGE_CHANNEL_ID, BOT_USERNAME
+from config import (
+    CHANNEL_ID,
+    STORAGE_CHANNEL_ID,
+    BOT_USERNAME,
+    ADMIN_IDS,
+    VVIP_USERS,
+)
 from database import get_pool
 from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
@@ -93,7 +99,7 @@ async def receive_media(message: Message, state: FSMContext):
             pool = await get_pool()
 
             user = await pool.fetchrow("""
-                SELECT is_admin, vvip, vvip_until
+                SELECT vvip, vvip_until
                 FROM users
                 WHERE chat_id=$1
             """, user_id)
@@ -102,14 +108,10 @@ async def receive_media(message: Message, state: FSMContext):
 
             now = datetime.now(timezone.utc)
 
-            is_admin = user["is_admin"] if user else False
+            is_admin = user_id in ADMIN_IDS
 
             vvip = user["vvip"] if user else False
             vvip_until = user["vvip_until"] if user else None
-
-            from datetime import datetime, timezone
-
-            now = datetime.now(timezone.utc)
 
             if vvip_until and vvip_until.tzinfo is None:
                 vvip_until = vvip_until.replace(tzinfo=timezone.utc)
@@ -120,7 +122,9 @@ async def receive_media(message: Message, state: FSMContext):
                 vvip_until > now
             )
 
-            allowed = is_admin or is_vvip_active
+            is_vvip = (user_id in VVIP_USERS) or is_vvip_active
+
+            allowed = is_admin or is_vvip
 
             if not allowed:
                 return await message.answer(
