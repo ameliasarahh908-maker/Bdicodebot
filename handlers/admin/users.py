@@ -113,7 +113,7 @@ async def users_latest(call: CallbackQuery):
     pool = await get_pool()
 
     users = await pool.fetch("""
-        SELECT telegram_id, balance, created_at
+        SELECT chat_id, balance, created_at
         FROM users
         ORDER BY created_at DESC
         LIMIT 10
@@ -131,7 +131,7 @@ async def users_latest(call: CallbackQuery):
         tgl = u["created_at"].strftime("%d-%m-%Y %H:%M")
 
         text += (
-            f"{i}. <code>{u['telegram_id']}</code>\n"
+            f"{i}. <code>{u['chat_id']}</code>\n"
             f"💰 {rupiah(u['balance'])}\n"
             f"📅 {tgl}\n\n"
         )
@@ -168,7 +168,7 @@ async def process_search(message: Message, state: FSMContext):
         return await message.answer("❌ Harus angka")
 
     user = await pool.fetchrow(
-        "SELECT * FROM users WHERE telegram_id=$1",
+        "SELECT * FROM users WHERE chat_id=$1",
         int(message.text)
     )
 
@@ -178,7 +178,7 @@ async def process_search(message: Message, state: FSMContext):
 
     text = (
         "👤 <b>USER DETAIL</b>\n\n"
-        f"ID: <code>{user['telegram_id']}</code>\n"
+        f"ID: <code>{user['chat_id']}</code>\n"
         f"Balance: {rupiah(user['balance'])}\n"
     )
 
@@ -215,7 +215,7 @@ async def balance_user(message: Message, state: FSMContext):
         return await message.answer("❌ Harus angka")
 
     user = await pool.fetchrow(
-        "SELECT * FROM users WHERE telegram_id=$1",
+        "SELECT * FROM users WHERE chat_id=$1",
         int(message.text)
     )
 
@@ -254,7 +254,7 @@ async def ban_user(message: Message, state: FSMContext):
     key = message.text.strip()
 
     if key.isdigit():
-        user = await pool.fetchrow("SELECT * FROM users WHERE telegram_id=$1", int(key))
+        user = await pool.fetchrow("SELECT * FROM users WHERE chat_id=$1", int(key))
     else:
         user = await pool.fetchrow("SELECT * FROM users WHERE LOWER(username)=LOWER($1)", key.replace("@", ""))
 
@@ -263,7 +263,7 @@ async def ban_user(message: Message, state: FSMContext):
         return await message.answer("❌ Tidak ditemukan")
 
     await pool.execute(
-        "UPDATE users SET is_banned=TRUE WHERE telegram_id=$1",
+        "UPDATE users SET is_banned=TRUE WHERE chat_id=$1",
         user["telegram_id"]
     )
 
@@ -293,7 +293,7 @@ async def unban_user(message: Message, state: FSMContext):
     key = message.text.strip()
 
     if key.isdigit():
-        user = await pool.fetchrow("SELECT * FROM users WHERE telegram_id=$1", int(key))
+        user = await pool.fetchrow("SELECT * FROM users WHERE chat_id=$1", int(key))
     else:
         user = await pool.fetchrow("SELECT * FROM users WHERE LOWER(username)=LOWER($1)", key.replace("@", ""))
 
@@ -302,7 +302,7 @@ async def unban_user(message: Message, state: FSMContext):
         return await message.answer("❌ Tidak ditemukan")
 
     await pool.execute(
-        "UPDATE users SET is_banned=FALSE WHERE telegram_id=$1",
+        "UPDATE users SET is_banned=FALSE WHERE chat_id=$1",
         user["telegram_id"]
     )
 
@@ -350,12 +350,12 @@ async def vvip_user(message: Message, state: FSMContext):
 
     if key.isdigit():
         user = await pool.fetchrow(
-            "SELECT telegram_id FROM users WHERE telegram_id=$1",
+            "SELECT chat_id FROM users WHERE telegram_id=$1",
             int(key)
         )
     else:
         user = await pool.fetchrow(
-            "SELECT telegram_id FROM users WHERE LOWER(username)=LOWER($1)",
+            "SELECT chat_id FROM users WHERE LOWER(username)=LOWER($1)",
             key.replace("@", "")
         )
 
@@ -363,7 +363,7 @@ async def vvip_user(message: Message, state: FSMContext):
         await state.clear()
         return await message.answer("❌ User tidak ditemukan")
 
-    await state.update_data(user_id=user["telegram_id"])
+    await state.update_data(user_id=user["chat_id"])
     await state.set_state(VvipState.waiting_type)
 
     # ✅ PINDAH KE DALAM FUNCTION
@@ -373,7 +373,7 @@ async def vvip_user(message: Message, state: FSMContext):
     kb.adjust(1)
 
     await message.answer(
-        f"🎯 User: <code>{user['telegram_id']}</code>\n\nPilih tipe:",
+        f"🎯 User: <code>{user['chat_id']}</code>\n\nPilih tipe:",
         parse_mode="HTML",
         reply_markup=kb.as_markup()
     )
@@ -437,7 +437,7 @@ async def set_membership_days(message: Message, state: FSMContext):
                     END,
                 vip = FALSE,
                 vip_until = NULL
-            WHERE telegram_id = $1
+            WHERE chat_id = $1
             """,
             user_id,
             timedelta(days=days)
@@ -457,7 +457,7 @@ async def set_membership_days(message: Message, state: FSMContext):
                     END,
                 vvip = FALSE,
                 vvip_until = NULL
-            WHERE telegram_id = $1
+            WHERE chat_id = $1
             """,
             user_id,
             timedelta(days=days)
