@@ -152,6 +152,9 @@ async def buy_vip(call: CallbackQuery):
             f"<code>{e}</code>",
         )
 
+    print("STEP 1")
+    print(payment)
+
     if not payment:
         return await safe_edit(
             call.message,
@@ -234,6 +237,8 @@ async def buy_vip(call: CallbackQuery):
             )
 
         )
+
+        print("STEP 2 - INSERT BERHASIL")
 
 
     except Exception as e:
@@ -321,14 +326,18 @@ async def buy_vip(call: CallbackQuery):
     # =========================
     try:
         await call.message.delete()
-    except:
-        pass
+        print("STEP 3 - MESSAGE DIHAPUS")
+    except Exception as e:
+        print("DELETE ERROR:", e)
 
     # =========================
     # QR IMAGE
     # =========================
     try:
         print("STEP 7 - Mulai kirim QR")
+
+        print("STEP 4")
+        print("QR =", qr_string)
 
         if qr_string:
             qr = qrcode.make(qr_string)
