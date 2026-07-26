@@ -528,7 +528,7 @@ async def check_payment(call: CallbackQuery):
                     [
                         InlineKeyboardButton(
                             text="🛒 Buy Now",
-                            url="https://t.me/+T8c4gdEWf843ZWQ1"
+                            url="https://t.me/+3g_yhHwxCrc5ZTg9"
                         )
                     ]
                 ]
