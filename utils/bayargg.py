@@ -1,12 +1,34 @@
 import json
 import logging
 import httpx
+import re
+import unicodedata
 
 from config import BAYARGG_API_KEY
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.bayar.gg/api"
+
+
+def clean_customer_name(name: str) -> str:
+    if not name:
+        return "Customer"
+
+    # Ubah font Unicode menjadi huruf biasa
+    name = unicodedata.normalize("NFKC", name)
+
+    # Hapus emoji & karakter non-ASCII
+    name = name.encode("ascii", "ignore").decode("ascii")
+
+    # Sisakan huruf, angka, spasi, titik, koma, strip, underscore
+    name = re.sub(r"[^A-Za-z0-9 .,_-]", "", name)
+
+    # Rapikan spasi
+    name = re.sub(r"\s+", " ", name).strip()
+
+    # Maksimal 50 karakter
+    return name[:50] or "Customer"
 
 
 class BayarGG:
@@ -49,8 +71,18 @@ class BayarGG:
         if redirect_url:
             payload["redirect_url"] = redirect_url
 
-        if customer_name:
-            payload["customer_name"] = customer_name
+        # Selalu bersihkan customer_name
+        original_name = customer_name or "Customer"
+        customer_name = clean_customer_name(original_name)
+
+        if original_name != customer_name:
+            logger.warning(
+                "Customer name sanitized: '%s' -> '%s'",
+                original_name,
+                customer_name,
+            )
+
+        payload["customer_name"] = customer_name
 
         if customer_phone:
             payload["customer_phone"] = customer_phone
