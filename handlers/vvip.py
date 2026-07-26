@@ -130,10 +130,14 @@ async def buy_vip(call: CallbackQuery):
             show_alert=True
         )
 
+    print("SEBELUM SAFE_EDIT")
+
     await safe_edit(
         call.message,
         "⏳ Membuat invoice pembayaran..."
     )
+
+    print("SESUDAH SAFE_EDIT")
     # =========================
     # CREATE PAYMENT
     # =========================
