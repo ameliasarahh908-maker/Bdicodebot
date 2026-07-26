@@ -536,8 +536,9 @@ async def check_payment(call: CallbackQuery):
 
             text = (
                 "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
+                f"📄 <b>Judul:</b> {file['title']}\n"
                 f"📁 <b>Code:</b> <code>{purchase['file_code']}</code>\n"
-                f"👤 <b>Buyer:</b> <code>{masked_id}</code>"
+                f"👤 <b>User Id:</b> <code>{masked_id}</code>"
             )
 
             await call.bot.send_message(
