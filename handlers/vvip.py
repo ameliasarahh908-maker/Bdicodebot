@@ -103,9 +103,17 @@ async def buy_vip(call: CallbackQuery):
     print("VVIP FILE VERSI BARU")
     print("############################")
 
-    print("🔥 BUY VIP KEKLIK:", call.data)  # 👈 TAMBAHKAN INI
+    print("🔥 BUY VIP KEKLIK:", call.data)
 
-    await call.answer("⏳ Membuat invoice...")
+    print("1 - SEBELUM ANSWER")
+
+    try:
+        await call.answer("⏳ Membuat invoice...")
+        print("2 - SESUDAH ANSWER")
+    except Exception as e:
+        print("ANSWER ERROR:", repr(e))
+
+    print("3 - LANJUT")
 
     paket_id = call.data.split(":", 1)[1]
 
