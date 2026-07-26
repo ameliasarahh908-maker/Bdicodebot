@@ -103,44 +103,53 @@ async def extend_vip(call:CallbackQuery):
 
     user=await pool.fetchrow(
         """
-        SELECT vip_type,vip_expired
+        SELECT is_vip,is_vvip,vip_expired,vvip_expired
         FROM users
         WHERE user_id=$1
         """,
         call.from_user.id
     )
 
-    if user and user["vip_expired"]:
-        expired=user["vip_expired"]
+    if user:
+        expired=None
+        jenis=""
 
-        if expired.tzinfo is None:
-            expired=wib.localize(expired)
-        else:
-            expired=expired.astimezone(wib)
+        if user["is_vvip"] and user["vvip_expired"]:
+            expired=user["vvip_expired"]
+            jenis="VVIP"
+        elif user["is_vip"] and user["vip_expired"]:
+            expired=user["vip_expired"]
+            jenis="VIP"
 
-        if expired>datetime.now(wib):
-            kb=InlineKeyboardBuilder()
+        if expired:
+            if expired.tzinfo is None:
+                expired=wib.localize(expired)
+            else:
+                expired=expired.astimezone(wib)
 
-            kb.button(
-                text="✅ Ya, Perpanjang",
-                callback_data=f"extendvip:{paket_id}"
-            )
-            kb.button(
-                text="❌ Batal",
-                callback_data="vvip"
-            )
-            kb.adjust(1)
+            if expired>datetime.now(wib):
+                kb=InlineKeyboardBuilder()
 
-            return await safe_edit(
-                call.message,
-                (
-                    "💎 <b>Membership Masih Aktif</b>\n\n"
-                    f"Jenis: <b>{(user['vip_type'] or 'VIP').upper()}</b>\n"
-                    f"Berakhir: <b>{expired.strftime('%d-%m-%Y %H:%M')}</b>\n\n"
-                    "Perpanjang sekarang?"
-                ),
-                reply_markup=kb.as_markup()
-            )
+                kb.button(
+                    text="✅ Ya, Perpanjang",
+                    callback_data=f"extendvip:{paket_id}"
+                )
+                kb.button(
+                    text="❌ Batal",
+                    callback_data="vvip"
+                )
+                kb.adjust(1)
+
+                return await safe_edit(
+                    call.message,
+                    (
+                        "💎 <b>Membership Masih Aktif</b>\n\n"
+                        f"Jenis: <b>{jenis}</b>\n"
+                        f"Berakhir: <b>{expired.strftime('%d-%m-%Y %H:%M')}</b>\n\n"
+                        "Perpanjang sekarang?"
+                    ),
+                    reply_markup=kb.as_markup()
+                )
 
     pending=await pool.fetchrow(
         """
