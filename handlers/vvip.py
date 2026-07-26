@@ -122,12 +122,10 @@ async def extend_vip(call:CallbackQuery):
             jenis="VIP"
 
         if expired:
-            if expired.tzinfo is None:
-                expired=wib.localize(expired)
-            else:
-                expired=expired.astimezone(wib)
+            if expired.tzinfo:
+                expired=expired.replace(tzinfo=None)
 
-            if expired>datetime.now(wib):
+            if expired>datetime.now():
                 kb=InlineKeyboardBuilder()
 
                 kb.button(
@@ -157,7 +155,7 @@ async def extend_vip(call:CallbackQuery):
         FROM payments
         WHERE user_id=$1
         AND status='pending'
-        AND expires_at > NOW()
+        AND expires_at > (NOW() AT TIME ZONE 'Asia/Jakarta')
         LIMIT 1
         """,
         call.from_user.id
@@ -200,17 +198,14 @@ async def extend_vip(call:CallbackQuery):
 
     if payment.get("expires_at"):
         try:
-            expires_at=datetime.fromisoformat(
-                payment["expires_at"]
+            expires_at=datetime.strptime(
+                payment["expires_at"],
+                "%Y-%m-%d %H:%M:%S"
             )
-
-            if expires_at.tzinfo is None:
-                expires_at=wib.localize(expires_at)
-            else:
-                expires_at=expires_at.astimezone(wib)
-
-        except:
-            pass
+            
+        except Exception as e:
+            print("EXPIRED ERROR:",e)
+            expires_at=None
 
     try:
         await pool.execute(
