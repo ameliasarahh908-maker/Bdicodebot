@@ -327,56 +327,38 @@ async def buy_vip(call: CallbackQuery):
     # =========================
     # QR IMAGE
     # =========================
-    if qr_string:
-        qr = qrcode.make(
-            qr_string
-        )
+    try:
+        print("STEP 7 - Mulai kirim QR")
 
+        if qr_string:
+            qr = qrcode.make(qr_string)
 
-        buf = BytesIO()
+            buf = BytesIO()
+            qr.save(buf, format="PNG")
+            buf.seek(0)
 
+            await call.message.answer_photo(
+                BufferedInputFile(
+                    buf.getvalue(),
+                    filename="qris.png"
+                ),
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
+        else:
+            await call.message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=kb.as_markup()
+            )
 
-        qr.save(
-            buf,
-            format="PNG"
-        )
+        print("STEP 8 - QR berhasil dikirim")
 
-
-        buf.seek(0)
-
-
-
-        await call.message.answer_photo(
-
-            BufferedInputFile(
-
-                buf.getvalue(),
-
-                filename="qris.png"
-
-            ),
-
-            caption=text,
-
-            parse_mode="HTML",
-
-            reply_markup=kb.as_markup()
-
-        )
-
-
-    else:
-
-
-        await call.message.answer(
-
-            text,
-
-            parse_mode="HTML",
-
-            reply_markup=kb.as_markup()
-
-        )
+    except Exception as e:
+        import traceback
+        print("ERROR KIRIM QR:", repr(e))
+        traceback.print_exc()
         
 # =========================
 # WAITING PAYMENT
