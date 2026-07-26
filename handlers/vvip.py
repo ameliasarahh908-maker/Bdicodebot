@@ -99,6 +99,10 @@ async def vvip_menu(call: CallbackQuery):
 @router.callback_query(lambda c: c.data and c.data.startswith("buyvip:"))
 async def buy_vip(call: CallbackQuery):
 
+    print("############################")
+    print("VVIP FILE VERSI BARU")
+    print("############################")
+
     print("🔥 BUY VIP KEKLIK:", call.data)  # 👈 TAMBAHKAN INI
 
     await call.answer("⏳ Membuat invoice...")
