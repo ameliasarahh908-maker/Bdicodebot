@@ -1,5 +1,5 @@
 from aiogram.exceptions import TelegramBadRequest
-
+import traceback
 
 async def safe_edit(
     message,
@@ -18,11 +18,11 @@ async def safe_edit(
 
         error = str(e)
 
-        # Pesan sama, abaikan
         if "message is not modified" in error:
             return
 
-        # Kalau gagal edit, kirim pesan baru
+        print("EDIT ERROR:", error)
+
         try:
             await message.answer(
                 text,
@@ -30,5 +30,6 @@ async def safe_edit(
                 parse_mode=parse_mode
             )
 
-        except Exception:
-            pass
+        except Exception as e:
+            print("ANSWER ERROR:", repr(e))
+            traceback.print_exc()
