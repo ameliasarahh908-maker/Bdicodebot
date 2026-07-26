@@ -118,7 +118,10 @@ class BayarGG:
             return {
                 "invoice_id": invoice_id,
                 "qris_string": qr_string,
-                "final_amount": final_amount
+                "payment_url": data.get("payment_url"),
+                "expires_at": data.get("expires_at"),
+                "final_amount": final_amount,
+                "status": data.get("status"),
             }
 
         except Exception as e:
