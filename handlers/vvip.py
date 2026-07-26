@@ -1,34 +1,26 @@
 import qrcode
-
 from io import BytesIO
 from datetime import datetime
+import pytz
 
-from aiogram import Router, F
-from aiogram.types import (
-    CallbackQuery,
-    Message,
-    BufferedInputFile
-)
+from aiogram import Router,F
+from aiogram.types import CallbackQuery,Message,BufferedInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-
 
 from database import get_pool
 from utils.bayargg import BayarGG
 from config_vip import VIP_PACKAGES
 from utils.safe_edit import safe_edit
-import pytz
-wib = pytz.timezone("Asia/Jakarta")
 
-router = Router()
-
+wib=pytz.timezone("Asia/Jakarta")
+router=Router()
 
 def build_vvip():
+    kb=InlineKeyboardBuilder()
 
-    kb = InlineKeyboardBuilder()
-
-    for key, paket in VIP_PACKAGES.items():
+    for key,paket in VIP_PACKAGES.items():
         kb.button(
-            text=f"💎 {paket['name']} • Rp {paket['price']:,}".replace(",", "."),
+            text=f"💎 {paket['name']} • Rp {paket['price']:,}".replace(",","."),
             callback_data=f"buyvip:{key}"
         )
 
@@ -36,178 +28,183 @@ def build_vvip():
         text="🔙 Kembali",
         callback_data="account"
     )
-
     kb.adjust(1)
 
-    text = (
+    text=(
         "<b><i>💎 PREMIUM ACCESS</i></b>\n"
         "━━━━━━━━━━━━━━\n\n"
         "Pilih paket premium:\n\n"
         "💠 <b>VIP</b>\n"
         "• Akses file premium\n"
         "• Masa aktif sesuai paket\n"
-        "• Tidak bisa upload\n\n"
+        "• Tidak bisa upload\n"
         "• Tidak bisa forward media\n\n"
         "💎 <b>VVIP</b>\n"
         "• Semua fitur VIP\n"
         "• Bisa upload file\n"
-        "• Bisa Save Media\n\n"
-        "• Selabih nya Bisa Untuk Semuanya\n\n"
+        "• Bisa save media\n"
+        "• Semua fitur terbuka\n"
         "• Storage uploader\n\n"
         "━━━━━━━━━━━━━━\n"
         "👇 Pilih paket:"
     )
 
-    return text, kb.as_markup()
+    return text,kb.as_markup()
 
-
-async def open_vvip(message: Message):
-    text, markup = build_vvip()
-
+async def open_vvip(message:Message):
+    text,markup=build_vvip()
     await message.answer(
         text,
         parse_mode="HTML",
         reply_markup=markup
     )
 
-
 async def safe_edit_vvip(message):
-    text, markup = build_vvip()
-
+    text,markup=build_vvip()
     await safe_edit(
         message,
         text,
         reply_markup=markup
     )
-# =========================
-# VIP / VVIP MENU
-# =========================
-@router.message(F.text == "💎 Upgrade")
-async def vvip_message(message: Message):
+
+@router.message(F.text=="💎 Upgrade")
+async def vvip_message(message:Message):
     await open_vvip(message)
 
-
-@router.callback_query(F.data == "vvip")
-async def vvip_menu(call: CallbackQuery):
-    await call.answer()
+@router.callback_query(F.data=="vvip")
+async def vvip_menu(call:CallbackQuery):
+    try:
+        await call.answer()
+    except:
+        pass
     await safe_edit_vvip(call.message)
 
 
 # =========================
 # BUY VIP / VVIP
 # =========================
-@router.callback_query(lambda c: c.data and c.data.startswith("buyvip:"))
-async def buy_vip(call: CallbackQuery):
 
-    print("############################")
-    print("VVIP FILE VERSI BARU")
-    print("############################")
-
-    print("🔥 BUY VIP KEKLIK:", call.data)
-
-    print("1 - SEBELUM ANSWER")
+@router.callback_query(lambda c:c.data and c.data.startswith("buyvip:"))
+async def extend_vip(call:CallbackQuery):
+    print("🔥 BUY VIP:",call.data)
 
     try:
-        await call.answer("⏳ Membuat invoice...")
-        print("2 - SESUDAH ANSWER")
-    except Exception as e:
-        print("ANSWER ERROR:", repr(e))
+        await call.answer()
+    except:
+        pass
 
-    print("3 - LANJUT")
+    paket_id=call.data.split(":",1)[1]
+    paket=VIP_PACKAGES.get(paket_id)
 
-    paket_id = call.data.split(":", 1)[1]
+    if not paket:
+        return await call.message.answer("❌ Paket tidak ditemukan")
 
-    paket = VIP_PACKAGES.get(paket_id)
-    if paket is None:
-        return await call.answer(
-            "❌ Paket tidak ditemukan",
-            show_alert=True
-        )
+    pool=await get_pool()
 
-    pool = await get_pool()
-
-    existing = await pool.fetchrow(
+    user=await pool.fetchrow(
         """
-        SELECT 1
-        FROM payments
+        SELECT vip_type,vip_expired
+        FROM users
         WHERE user_id=$1
-          AND status='pending'
         """,
         call.from_user.id
     )
 
-    if existing:
-        return await call.answer(
-            "⚠️ Kamu masih punya invoice yang belum dibayar.",
-            show_alert=True
-        )
+    if user and user["vip_expired"]:
+        expired=user["vip_expired"]
 
-    print("SEBELUM SAFE_EDIT")
+        if expired.tzinfo is None:
+            expired=wib.localize(expired)
+        else:
+            expired=expired.astimezone(wib)
+
+        if expired>datetime.now(wib):
+            kb=InlineKeyboardBuilder()
+
+            kb.button(
+                text="✅ Ya, Perpanjang",
+                callback_data=f"extendvip:{paket_id}"
+            )
+            kb.button(
+                text="❌ Batal",
+                callback_data="vvip"
+            )
+            kb.adjust(1)
+
+            return await safe_edit(
+                call.message,
+                (
+                    "💎 <b>Membership Masih Aktif</b>\n\n"
+                    f"Jenis: <b>{(user['vip_type'] or 'VIP').upper()}</b>\n"
+                    f"Berakhir: <b>{expired.strftime('%d-%m-%Y %H:%M')}</b>\n\n"
+                    "Perpanjang sekarang?"
+                ),
+                reply_markup=kb.as_markup()
+            )
+
+    pending=await pool.fetchrow(
+        """
+        SELECT invoice_id
+        FROM payments
+        WHERE user_id=$1
+        AND status='pending'
+        AND expires_at > NOW()
+        LIMIT 1
+        """,
+        call.from_user.id
+    )
+
+    if pending:
+        return await call.message.answer(
+            "⚠️ Masih ada invoice yang belum dibayar."
+        )
 
     await safe_edit(
         call.message,
         "⏳ Membuat invoice pembayaran..."
     )
 
-    print("SESUDAH SAFE_EDIT")
-    # =========================
-    # CREATE PAYMENT
-    # =========================
     try:
-
-        payment = await BayarGG.create_payment(
+        payment=await BayarGG.create_payment(
             amount=paket["price"],
-            description=f"VIP {paket['days']} Hari",
-            customer_name=call.from_user.full_name,
+            description=f"{paket['name']} - {paket['days']} Hari",
+            customer_name=call.from_user.full_name
         )
 
     except Exception as e:
         return await safe_edit(
             call.message,
-            "❌ <b>Gagal membuat invoice</b>\n\n"
-            f"<code>{e}</code>",
+            f"❌ Gagal membuat invoice\n<code>{e}</code>"
         )
-
-    print("STEP 1")
-    print(payment)
 
     if not payment:
         return await safe_edit(
             call.message,
-            "❌ Invoice gagal dibuat.",
+            "❌ Invoice gagal dibuat"
         )
 
-    invoice_id = payment["invoice_id"]
-    payment_url = payment.get(
-        "payment_url"
-    )
-    qr_string = payment.get(
-        "qris_string"
-    )
+    invoice_id=payment["invoice_id"]
+    payment_url=payment.get("payment_url")
+    qr_string=payment.get("qris_string")
 
-    expires_at = None
+    expires_at=None
+
     if payment.get("expires_at"):
         try:
-            expires_at = datetime.fromisoformat(
+            expires_at=datetime.fromisoformat(
                 payment["expires_at"]
             )
+
             if expires_at.tzinfo is None:
-                expires_at = wib.localize(expires_at)
+                expires_at=wib.localize(expires_at)
             else:
-                expires_at = expires_at.astimezone(wib)
+                expires_at=expires_at.astimezone(wib)
 
         except:
             pass
 
-
-    # =========================
-    # SAVE PAYMENT
-    # =========================
     try:
-
-
         await pool.execute(
-
             """
             INSERT INTO payments
             (
@@ -222,144 +219,68 @@ async def buy_vip(call: CallbackQuery):
                 expires_at,
                 type
             )
-
             VALUES
-            (
-                $1,$2,$3,$4,
-                'pending',
-                'bayargg',
-                $5,$6,$7,
-                $8
-            )
+            ($1,$2,$3,$4,'pending','bayargg',$5,$6,$7,$8)
             """,
-
             call.from_user.id,
-
             paket_id,
-
             invoice_id,
-
             paket["price"],
-
             invoice_id,
-
             payment_url,
-
             expires_at,
-
-            paket.get(
-                "type",
-                "vip"
-            )
-
+            paket.get("type","vip")
         )
-
-        print("STEP 2 - INSERT BERHASIL")
-
 
     except Exception as e:
-
-
         return await safe_edit(
             call.message,
-            "❌ <b>Database Error</b>\n\n"
-            f"<code>{e}</code>",
-        )
-        
-    paket_type = paket.get(
-        "type",
-        "vip"
-    )
-
-    if paket_type == "vvip":
-
-        akses = (
-            "💎 VVIP\n"
-            "✅ Bisa upload file\n"
-            "✅ Akses premium"
+            f"❌ Database Error\n<code>{e}</code>"
         )
 
+    if paket.get("type")=="vvip":
+        akses="💎 VVIP\n✅ Bisa upload\n✅ Semua fitur"
     else:
+        akses="💠 VIP\n✅ Akses premium\n❌ Tidak bisa upload"
 
-        akses = (
-            "💠 VIP\n"
-            "✅ Akses premium\n"
-            "❌ Tidak bisa upload"
-        )
-
-    text = (
-
-        "<b><i>💎 INVOICE BERHASIL</i></b>\n"
+    text=(
+        "<b>💎 INVOICE BERHASIL</b>\n"
         "━━━━━━━━━━━━━━\n\n"
-
-        f"📦 Paket : <b>{paket['name']}</b>\n"
-
-        f"💰 Harga : <b>Rp "
-        f"{paket['price']:,}</b>\n\n"
-
+        f"📦 Paket: <b>{paket['name']}</b>\n"
+        f"💰 Harga: <b>Rp {paket['price']:,}</b>\n\n"
         f"{akses}\n\n"
-
-        "🧾 Invoice:\n"
-
-        f"<code>{invoice_id}</code>\n\n"
-
+        f"🧾 Invoice:\n<code>{invoice_id}</code>\n\n"
         "⏳ Status: MENUNGGU PEMBAYARAN\n\n"
-
         "Scan QRIS di bawah.\n"
-
         "Aktif otomatis setelah pembayaran berhasil."
-
     ).replace(",", ".")
+
     if expires_at:
-        text += (
+        text+=(
             f"\n\n⏰ Expired: {expires_at.strftime('%H:%M:%S')}"
-            "\n⚠️ Invoice akan otomatis dibatalkan."
         )
 
-
-
-    kb = InlineKeyboardBuilder()
-
-
+    kb=InlineKeyboardBuilder()
     kb.button(
         text="⏳ Menunggu Pembayaran",
         callback_data="waiting_payment"
     )
-
-
     kb.button(
         text="🔙 Kembali",
         callback_data="vvip"
     )
-
-
     kb.adjust(1)
 
-
-
-    # =========================
-    # HAPUS MESSAGE LAMA
-    # =========================
     try:
         await call.message.delete()
-        print("STEP 3 - MESSAGE DIHAPUS")
-    except Exception as e:
-        print("DELETE ERROR:", e)
+    except:
+        pass
 
-    # =========================
-    # QR IMAGE
-    # =========================
     try:
-        print("STEP 7 - Mulai kirim QR")
-
-        print("STEP 4")
-        print("QR =", qr_string)
-
         if qr_string:
-            qr = qrcode.make(qr_string)
-
-            buf = BytesIO()
-            qr.save(buf, format="PNG")
+            qr=qrcode.make(qr_string)
+            buf=BytesIO()
+            qr.save(buf,format="PNG")
             buf.seek(0)
 
             await call.message.answer_photo(
@@ -378,25 +299,23 @@ async def buy_vip(call: CallbackQuery):
                 reply_markup=kb.as_markup()
             )
 
-        print("STEP 8 - QR berhasil dikirim")
-
     except Exception as e:
-        import traceback
-        print("ERROR KIRIM QR:", repr(e))
-        traceback.print_exc()
+        print("QR ERROR:",e)
+        await call.message.answer(
+            "❌ Gagal membuat QR pembayaran."
+        )
         
 # =========================
 # WAITING PAYMENT
 # =========================
-@router.callback_query(F.data == "waiting_payment")
-async def waiting_payment(call: CallbackQuery):
-    await call.answer("🔄 Mengecek pembayaran...")
 
-    pool = await get_pool()
+@router.callback_query(F.data=="waiting_payment")
+async def waiting_payment(call:CallbackQuery):
+    pool=await get_pool()
 
-    payment = await pool.fetchrow(
+    payment=await pool.fetchrow(
         """
-        SELECT invoice_id, status
+        SELECT invoice_id,status
         FROM payments
         WHERE user_id=$1
         ORDER BY id DESC
@@ -411,19 +330,21 @@ async def waiting_payment(call: CallbackQuery):
             show_alert=True
         )
 
-    if payment["status"] == "paid":
+    status=payment["status"]
+
+    if status=="paid":
         return await call.answer(
-            "✅ Pembayaran sudah berhasil.",
+            "✅ Pembayaran berhasil.",
             show_alert=True
         )
 
-    if payment["status"] == "expired":
+    if status=="expired":
         return await call.answer(
             "⌛ Invoice sudah kedaluwarsa.",
             show_alert=True
         )
 
-    return await call.answer(
+    await call.answer(
         "⏳ Pembayaran masih menunggu.",
         show_alert=True
     )
