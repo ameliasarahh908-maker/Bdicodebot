@@ -5,8 +5,9 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from utils.redis_client import init_redis
+from aiogram.exceptions import TelegramNetworkError
 
+from utils.redis_client import init_redis
 from config import TIMEZONE
 from bot import bot, dp
 from database import get_pool, close_db
@@ -83,17 +84,39 @@ async def lifespan(app: FastAPI):
     logging.info("APP STARTING")
 
     await get_pool()
-    await init_redis()  # ✅ WAJIB TAMBAH INI
+    await init_redis()
 
-    await bot.delete_webhook(
-        drop_pending_updates=True
-    )
+    # Retry koneksi Telegram
+    for attempt in range(5):
+        try:
+            logging.info(
+                f"Connecting to Telegram... ({attempt + 1}/5)"
+            )
 
-    me = await bot.get_me()
+            await bot.delete_webhook(
+                drop_pending_updates=True
+            )
 
-    logging.info(
-        f"BOT ONLINE : @{me.username}"
-    )
+            me = await bot.get_me()
+
+            logging.info(
+                f"BOT ONLINE : @{me.username}"
+            )
+
+            break
+
+        except TelegramNetworkError as e:
+            logging.warning(
+                f"Telegram timeout ({attempt + 1}/5): {e}"
+            )
+
+            if attempt == 4:
+                logging.error(
+                    "Failed to connect to Telegram after 5 attempts."
+                )
+                raise
+
+            await asyncio.sleep(5)
 
     await start_workers()
 
