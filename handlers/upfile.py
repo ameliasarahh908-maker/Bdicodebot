@@ -1,17 +1,23 @@
 import asyncio
 import json
-import random
-import string
-import time
 import logging
+import time
+import uuid
+import re
+
 from typing import Dict
 from contextlib import asynccontextmanager
 
 from aiogram import Router, F
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest, RetryAfter
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import (
@@ -21,68 +27,197 @@ from config import (
     ADMIN_IDS,
     VVIP_USERS,
 )
+
 from database import get_pool
-from utils.force_sub import check_force_sub
 from keyboards.join import join_kb
+from utils.force_sub import check_force_sub
 
 
 router = Router()
 
 MAX_MEDIA = 200
-UPDATE_DELAY = 0.3
+UPDATE_DELAY = 0.30
+
+logging.basicConfig(level=logging.INFO)
 
 _last_update: Dict[int, float] = {}
 _user_locks: Dict[int, asyncio.Lock] = {}
 
+# ============================================
+# STORAGE COPY
+# ============================================
 
-def get_lock(user_id: int):
-    if user_id not in _user_locks:
-        _user_locks[user_id] = asyncio.Lock()
+_copy_lock = asyncio.Lock()
 
-    return _user_locks[user_id]
+
+async def copy_to_storage(
+    bot,
+    from_chat_id: int,
+    message_id: int,
+):
+    """
+    Copy media ke Storage Channel.
+    Retry otomatis jika Telegram FloodWait.
+    """
+
+    async with _copy_lock:
+
+        while True:
+
+            try:
+
+                msg = await bot.copy_message(
+                    chat_id=STORAGE_CHANNEL_ID,
+                    from_chat_id=from_chat_id,
+                    message_id=message_id,
+                )
+
+                await asyncio.sleep(0.15)
+
+                return msg
+
+            except RetryAfter as e:
+
+                logging.warning(
+                    "FloodWait %ss ketika copy storage.",
+                    e.retry_after,
+                )
+
+                await asyncio.sleep(e.retry_after + 1)
+
+            except Exception:
+
+                logging.exception(
+                    "copy_to_storage gagal"
+                )
+
+                raise
+
+
+# ============================================
+# USER LOCK
+# ============================================
+
+def get_lock(user_id: int) -> asyncio.Lock:
+
+    lock = _user_locks.get(user_id)
+
+    if lock is None:
+
+        lock = asyncio.Lock()
+
+        _user_locks[user_id] = lock
+
+    return lock
 
 
 @asynccontextmanager
 async def user_lock(user_id: int):
+
     lock = get_lock(user_id)
+
     async with lock:
+
         yield
 
 
-async def safe_update(bot, chat_id, message_id, text, reply_markup=None):
-    now = time.time()
-    last = _last_update.get(chat_id, 0)
+# ============================================
+# SAFE EDIT MESSAGE
+# ============================================
 
-    if now - last < UPDATE_DELAY:
-        return
+async def safe_update(
+    bot,
+    chat_id: int,
+    message_id: int,
+    text: str,
+    reply_markup=None,
+):
+
+    now = time.time()
+
+    last = _last_update.get(chat_id)
+
+    if last is not None:
+
+        if now - last < UPDATE_DELAY:
+
+            return
 
     _last_update[chat_id] = now
 
     try:
+
         await bot.edit_message_text(
             chat_id=chat_id,
             message_id=message_id,
             text=text,
+            parse_mode="HTML",
             reply_markup=reply_markup,
-            parse_mode="HTML"
         )
-    except TelegramBadRequest:
-        pass
-    except Exception as e:
-        logging.error(f"SAFE UPDATE ERROR: {e}")
 
+    except TelegramBadRequest:
+
+        pass
+
+    except Exception:
+
+        logging.exception(
+            "safe_update gagal"
+        )
+
+
+# ============================================
+# FILTER JUDUL
+# ============================================
+
+BAD_WORDS = {
+    "bocil",
+    "child",
+    "underage",
+}
+
+
+def normalize(text: str) -> str:
+
+    return re.sub(
+        r"[^a-z0-9]",
+        "",
+        text.lower(),
+    )
+
+
+def is_bad(text: str) -> bool:
+
+    clean = normalize(text)
+
+    return any(
+        word in clean
+        for word in BAD_WORDS
+    )
+
+
+# ============================================
+# FSM
+# ============================================
 
 class UploadState(StatesGroup):
+
     upload = State()
+
     wait_title = State()
+
     wait_price = State()
 
 
-# =========================
-# RECEIVE MEDIA (STORAGE CHANNEL FIX)
-# =========================
+# ============================================
+# RECEIVE MEDIA
+# ============================================
+
 @router.message(F.document | F.video | F.photo)
-async def receive_media(message: Message, state: FSMContext):
+async def receive_media(
+    message: Message,
+    state: FSMContext,
+):
 
     user_id = message.from_user.id
 
@@ -90,19 +225,24 @@ async def receive_media(message: Message, state: FSMContext):
 
         data = await state.get_data()
 
-        # =========================
-        # START UPLOAD MODE
-        # =========================
+        # ========================================
+        # START UPLOAD
+        # ========================================
 
         if not data.get("upload_mode"):
 
             pool = await get_pool()
 
-            user = await pool.fetchrow("""
-                SELECT vvip, vvip_until
+            user = await pool.fetchrow(
+                """
+                SELECT
+                    vvip,
+                    vvip_until
                 FROM users
                 WHERE chat_id=$1
-            """, user_id)
+                """,
+                user_id,
+            )
 
             from datetime import datetime, timezone
 
@@ -110,36 +250,50 @@ async def receive_media(message: Message, state: FSMContext):
 
             is_admin = user_id in ADMIN_IDS
 
-            vvip = user["vvip"] if user else False
-            vvip_until = user["vvip_until"] if user else None
+            vvip = False
+            vvip_until = None
 
-            if vvip_until and vvip_until.tzinfo is None:
-                vvip_until = vvip_until.replace(tzinfo=timezone.utc)
+            if user:
+                vvip = user["vvip"]
+                vvip_until = user["vvip_until"]
+
+            if (
+                vvip_until
+                and vvip_until.tzinfo is None
+            ):
+                vvip_until = vvip_until.replace(
+                    tzinfo=timezone.utc
+                )
 
             is_vvip_active = (
-                vvip and
-                vvip_until and
-                vvip_until > now
+                vvip
+                and vvip_until
+                and vvip_until > now
             )
 
-            is_vvip = (user_id in VVIP_USERS) or is_vvip_active
+            is_vvip = (
+                user_id in VVIP_USERS
+                or is_vvip_active
+            )
 
-            allowed = is_admin or is_vvip
+            if not (is_admin or is_vvip):
 
-            if not allowed:
                 return await message.answer(
                     "🚫 <b>AKSES DITOLAK</b>\n\n"
                     "📦 Upload hanya untuk:\n"
-                    "👑 VVIP & Admin\n\n"
-                    "💎 Status kamu masih VIP / FREE\n"
-                    "Upgrade ke <b>VVIP</b> untuk mulai upload 🚀",
-                    parse_mode="HTML"
+                    "👑 Admin & VVIP\n\n"
+                    "💎 Upgrade ke VVIP agar dapat upload.",
+                    parse_mode="HTML",
                 )
 
-            if not await check_force_sub(message.bot, user_id):
+            if not await check_force_sub(
+                message.bot,
+                user_id,
+            ):
+
                 return await message.answer(
-                    "❌ Join channel terlebih dahulu.",
-                    reply_markup=join_kb()
+                    "❌ Silakan join channel terlebih dahulu.",
+                    reply_markup=join_kb(),
                 )
 
             await state.clear()
@@ -148,11 +302,11 @@ async def receive_media(message: Message, state: FSMContext):
                 UploadState.upload
             )
 
-            msg = await message.answer(
+            progress = await message.answer(
                 "📦 <b>UPLOAD DIMULAI</b>\n\n"
                 "Kirim media sebanyak yang diinginkan.\n"
-                "Jika selesai tekan <b>STOP & SAVE</b>.",
-                parse_mode="HTML"
+                "Tekan <b>STOP & SAVE</b> jika sudah selesai.",
+                parse_mode="HTML",
             )
 
             await state.update_data(
@@ -163,58 +317,48 @@ async def receive_media(message: Message, state: FSMContext):
                 is_paid=False,
                 price=0,
                 payment_provider=None,
-                progress_msg_id=msg.message_id,
-                saving=False
+                progress_msg_id=progress.message_id,
+                saving=False,
             )
 
             return
 
+        # ========================================
+        # DATA MEDIA
+        # ========================================
 
-        # =========================
-        # AMBIL DATA MEDIA
-        # =========================
-
-        media = data.get(
-            "media",
-            []
-        )
-
+        media = data.get("media", [])
 
         if len(media) >= MAX_MEDIA:
+
             return await message.answer(
                 f"❌ Maksimal {MAX_MEDIA} file."
             )
 
-
-        # =========================
-        # COPY STORAGE CHANNEL
-        # =========================
+        # ========================================
+        # COPY KE STORAGE
+        # ========================================
 
         try:
 
-            copy = await message.bot.copy_message(
-                chat_id=STORAGE_CHANNEL_ID,
-                from_chat_id=message.chat.id,
-                message_id=message.message_id
+            copied = await copy_to_storage(
+                message.bot,
+                message.chat.id,
+                message.message_id,
             )
 
-            storage_message_id = copy.message_id
+            storage_message_id = copied.message_id
 
-
-        except Exception as e:
-
-            logging.error(
-                f"STORAGE COPY ERROR: {e}"
-            )
+        except Exception:
 
             return await message.answer(
-                "❌ Gagal menyimpan file."
+                "⚠️ Storage sedang sibuk.\n"
+                "Silakan kirim ulang beberapa detik lagi."
             )
 
-
-        # =========================
-        # DETEKSI MEDIA
-        # =========================
+        # ========================================
+        # DETEKSI TIPE MEDIA
+        # ========================================
 
         if message.document:
 
@@ -228,7 +372,6 @@ async def receive_media(message: Message, state: FSMContext):
                 message.document.file_size or 0
             )
 
-
         elif message.video:
 
             media_type = "video"
@@ -238,13 +381,12 @@ async def receive_media(message: Message, state: FSMContext):
             file_name = getattr(
                 message.video,
                 "file_name",
-                None
+                None,
             )
 
             file_size = (
                 message.video.file_size or 0
             )
-
 
         else:
 
@@ -258,133 +400,141 @@ async def receive_media(message: Message, state: FSMContext):
                 message.photo[-1].file_size or 0
             )
 
+        # ========================================
+        # DUPLIKAT
+        # ========================================
 
-        # =========================
-        # CEK DUPLIKAT
-        # =========================
+        duplicate = any(
 
-        if any(
-            x.get("message_id") == storage_message_id or
-            x.get("file_id") == file_id
-            for x in media
-        ):
+            item["file_id"] == file_id
+            or item["message_id"] == storage_message_id
+
+            for item in media
+        )
+
+        if duplicate:
+
             return
 
-
-        # =========================
+        # ========================================
         # SIMPAN MEDIA
-        # =========================
+        # ========================================
 
-        media.append({
-
-            "message_id": storage_message_id,
-
-            "file_id": file_id,
-
-            "type": media_type,
-
-            "file_name": file_name,
-
-            "file_size": file_size
-
-        })
-
+        media.append(
+            {
+                "message_id": storage_message_id,
+                "file_id": file_id,
+                "type": media_type,
+                "file_name": file_name,
+                "file_size": file_size,
+            }
+        )
 
         await state.update_data(
             media=media
         )
 
-
-        # HAPUS PESAN ASLI
+        # ========================================
+        # HAPUS CHAT USER
+        # ========================================
 
         try:
             await message.delete()
-
         except Exception:
             pass
 
-
-        # =========================
+        # ========================================
         # UPDATE PROGRESS
-        # =========================
+        # ========================================
 
         text = (
             "📦 <b>UPLOAD MODE</b>\n\n"
-            f"📁 Total File: "
+            f"📁 Total File : "
             f"<b>{len(media)}/{MAX_MEDIA}</b>\n\n"
-            "Jika sudah selesai tekan tombol di bawah."
+            "Jika selesai tekan tombol di bawah."
         )
-
 
         kb = InlineKeyboardBuilder()
 
-
         kb.button(
             text="⏹ STOP & SAVE",
-            callback_data="save_upfile"
+            callback_data="save_upfile",
         )
 
         kb.button(
             text="❌ BATAL",
-            callback_data="cancel_upfile"
+            callback_data="cancel_upfile",
         )
 
         kb.adjust(1)
 
-
-        msg_id = data.get(
+        progress_msg = data.get(
             "progress_msg_id"
         )
 
-
-        if msg_id:
+        if progress_msg:
 
             await safe_update(
                 message.bot,
                 message.chat.id,
-                msg_id,
+                progress_msg,
                 text,
-                kb.as_markup()
+                kb.as_markup(),
             )
 
 
-# =========================
-# CANCEL
-# =========================
+# ============================================
+# CANCEL UPLOAD
+# ============================================
+
 @router.callback_query(F.data == "cancel_upfile")
-async def cancel(call: CallbackQuery, state: FSMContext):
+async def cancel_upload(
+    call: CallbackQuery,
+    state: FSMContext,
+):
 
     await call.answer()
 
     async with user_lock(call.from_user.id):
 
         data = await state.get_data()
-        msg_id = data.get("progress_msg_id")
 
-        if msg_id:
+        progress_msg = data.get("progress_msg_id")
+
+        if progress_msg:
+
             try:
+
                 await call.bot.delete_message(
-                    call.message.chat.id,
-                    msg_id
+                    chat_id=call.message.chat.id,
+                    message_id=progress_msg,
                 )
-            except:
+
+            except Exception:
                 pass
 
         try:
+
             await call.message.edit_text(
                 "❌ <b>UPLOAD DIBATALKAN</b>",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
-        except:
+
+        except Exception:
             pass
 
         await state.clear()
 
-# =========================
-# SAVE → SHARE MODE
-# =========================
+
+# ============================================
+# STOP & SAVE
+# ============================================
+
 @router.callback_query(F.data == "save_upfile")
-async def choose_share(call: CallbackQuery, state: FSMContext):
+async def choose_share_mode(
+    call: CallbackQuery,
+    state: FSMContext,
+):
 
     await call.answer()
 
@@ -392,22 +542,25 @@ async def choose_share(call: CallbackQuery, state: FSMContext):
 
         data = await state.get_data()
 
-        if not data.get("media"):
+        media = data.get("media", [])
+
+        if not media:
+
             return await call.answer(
                 "Belum ada file.",
-                show_alert=True
+                show_alert=True,
             )
 
         kb = InlineKeyboardBuilder()
 
         kb.button(
             text="🔗 SHARE MEDIA",
-            callback_data="share_yes"
+            callback_data="share_yes",
         )
 
         kb.button(
             text="🔒 PRIVATE",
-            callback_data="share_no"
+            callback_data="share_no",
         )
 
         kb.adjust(2)
@@ -415,94 +568,29 @@ async def choose_share(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text(
             "📦 <b>PILIH MODE FILE</b>\n\n"
             "🔗 Share Media = File dapat dibagikan.\n"
-            "🔒 Private = Hanya melalui kode.",
+            "🔒 Private = File hanya dapat diakses menggunakan kode.",
             parse_mode="HTML",
-            reply_markup=kb.as_markup()
+            reply_markup=kb.as_markup(),
         )
 
-# =========================
-# INPUT TITLE
-# =========================
 
-import re
-
-BAD_WORDS = [
-    "bocil",
-    "child",
-    "underage"
-]
-
-
-def normalize(text: str) -> str:
-    return re.sub(
-        r"[^a-z0-9]",
-        "",
-        text.lower()
-    )
-
-
-def is_bad(text: str) -> bool:
-    clean = normalize(text)
-    return any(
-        word in clean
-        for word in BAD_WORDS
-    )
-
-
-@router.message(UploadState.wait_title)
-async def input_title(message: Message, state: FSMContext):
-
-    async with user_lock(message.from_user.id):
-
-        title = (message.text or "").strip()
-
-        if title.lower() == "/skip":
-            title = "Untitled"
-
-        elif len(title) < 3:
-            return await message.answer(
-                "❌ Judul minimal 3 karakter."
-            )
-
-        if is_bad(title):
-            return await message.answer(
-                "❌ Judul mengandung kata terlarang.\n"
-                "Silakan gunakan judul lain."
-            )
-
-        await state.update_data(
-            title=title
-        )
-
-        kb = InlineKeyboardBuilder()
-
-        kb.button(
-            text="🆓 Free",
-            callback_data="file_free"
-        )
-
-        kb.button(
-            text="💰 Paid",
-            callback_data="file_paid"
-        )
-
-        kb.adjust(2)
-
-        await message.answer(
-            "💎 Pilih tipe file:",
-            reply_markup=kb.as_markup()
-        )
-# =========================
+# ============================================
 # SHARE HANDLER
-# =========================
+# ============================================
+
 @router.callback_query(F.data.startswith("share_"))
-async def handle_share(call: CallbackQuery, state: FSMContext):
+async def share_handler(
+    call: CallbackQuery,
+    state: FSMContext,
+):
 
     await call.answer()
 
     async with user_lock(call.from_user.id):
 
-        share_media = call.data == "share_yes"
+        share_media = (
+            call.data == "share_yes"
+        )
 
         await state.update_data(
             share_media=share_media
@@ -514,121 +602,230 @@ async def handle_share(call: CallbackQuery, state: FSMContext):
 
         text = (
             "📝 <b>Masukkan Judul File</b>\n\n"
-            "Ketik /skip untuk otomatis."
+            "Ketik /skip untuk menggunakan judul otomatis."
         )
 
         try:
+
             await call.message.edit_text(
                 text,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
 
-        except:
+        except Exception:
+
             await call.message.answer(
                 text,
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
 
 
-# =========================
-# FILE PAID
-# =========================
-@router.callback_query(F.data == "file_paid")
-async def file_paid(call: CallbackQuery, state: FSMContext):
+# ============================================
+# INPUT TITLE
+# ============================================
 
-    await call.answer()
+@router.message(UploadState.wait_title)
+async def input_title(
+    message: Message,
+    state: FSMContext,
+):
 
-    await state.set_state(UploadState.wait_price)
+    async with user_lock(message.from_user.id):
 
-    await call.message.edit_text(
-        "💰 Masukkan harga file (min 1000):"
-    )
+        title = (
+            message.text or ""
+        ).strip()
 
+        if title.lower() == "/skip":
 
-# =========================
+            title = "Untitled"
+
+        else:
+
+            if len(title) < 3:
+
+                return await message.answer(
+                    "❌ Judul minimal 3 karakter."
+                )
+
+            if is_bad(title):
+
+                return await message.answer(
+                    "❌ Judul mengandung kata terlarang.\n"
+                    "Silakan gunakan judul lain."
+                )
+
+        await state.update_data(
+            title=title
+        )
+
+        kb = InlineKeyboardBuilder()
+
+        kb.button(
+            text="🆓 FREE",
+            callback_data="file_free",
+        )
+
+        kb.button(
+            text="💰 PAID",
+            callback_data="file_paid",
+        )
+
+        kb.adjust(2)
+
+        await message.answer(
+            "💎 <b>Pilih tipe file</b>",
+            parse_mode="HTML",
+            reply_markup=kb.as_markup(),
+        )
+
+# ============================================
 # FILE FREE
-# =========================
+# ============================================
+
 @router.callback_query(F.data == "file_free")
-async def file_free(call: CallbackQuery, state: FSMContext):
+async def file_free(
+    call: CallbackQuery,
+    state: FSMContext,
+):
 
     await call.answer()
 
-    async with user_lock(call.from_user.id):  # ✅ TAMBAH INI
+    async with user_lock(call.from_user.id):
 
         await state.update_data(
             is_paid=False,
             price=0,
-            payment_provider=None
+            payment_provider=None,
         )
 
-        await call.message.edit_text("⏳ Menyimpan file...")
+        try:
 
-        await finalize_save(call.message, state, call.from_user.id)
+            await call.message.edit_text(
+                "⏳ <b>Menyimpan file...</b>",
+                parse_mode="HTML",
+            )
+
+        except Exception:
+            pass
+
+        await finalize_save(
+            call.message,
+            state,
+            call.from_user.id,
+        )
 
 
-# =========================
+# ============================================
+# FILE PAID
+# ============================================
+
+@router.callback_query(F.data == "file_paid")
+async def file_paid(
+    call: CallbackQuery,
+    state: FSMContext,
+):
+
+    await call.answer()
+
+    await state.set_state(
+        UploadState.wait_price
+    )
+
+    await call.message.edit_text(
+        "💰 <b>Masukkan harga file</b>\n\n"
+        "Minimal Rp1.000",
+        parse_mode="HTML",
+    )
+
+
+# ============================================
 # INPUT PRICE
-# =========================
+# ============================================
+
 @router.message(UploadState.wait_price)
-async def input_price(message: Message, state: FSMContext):
+async def input_price(
+    message: Message,
+    state: FSMContext,
+):
 
     async with user_lock(message.from_user.id):
 
         text = (
             message.text or ""
-        ).replace(".", "").replace(",", "")
+        ).replace(".", "").replace(",", "").strip()
 
         if not text.isdigit():
+
             return await message.answer(
-                "❌ Harga harus angka."
+                "❌ Harga harus berupa angka."
             )
 
         price = int(text)
 
         if price < 1000:
+
             return await message.answer(
-                "❌ Minimal Rp1000."
+                "❌ Harga minimal Rp1.000."
             )
 
         await state.update_data(
             is_paid=True,
             price=price,
-            payment_provider="bayargg"
+            payment_provider="bayargg",
         )
 
         await message.answer(
-            f"⏳ Menyimpan file dengan harga Rp{price:,}..."
+            f"⏳ <b>Menyimpan file...</b>\n\n"
+            f"💰 Harga : Rp{price:,}".replace(",", "."),
+            parse_mode="HTML",
         )
 
         await finalize_save(
             message,
             state,
-            message.from_user.id
+            message.from_user.id,
         )
-    
-# =========================
+
+        
+# ============================================
 # FINAL SAVE
-# =========================
-async def finalize_save(message: Message, state: FSMContext, user_id: int):
+# ============================================
+
+async def finalize_save(
+    message: Message,
+    state: FSMContext,
+    user_id: int,
+):
 
     data = await state.get_data()
 
     if data.get("saving"):
-        return
 
+        return
 
     await state.update_data(
         saving=True
     )
 
-
     try:
 
-        media = [
-            m for m in data.get("media", [])
-            if m.get("message_id") and m.get("file_id")
-        ]
+        # ====================================
+        # MEDIA
+        # ====================================
 
+        media = [
+
+            item
+
+            for item in data.get("media", [])
+
+            if (
+                item.get("message_id")
+                and item.get("file_id")
+            )
+
+        ]
 
         if not media:
 
@@ -637,41 +834,44 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             )
 
             return await message.answer(
-                "❌ No media found"
+                "❌ Tidak ada file yang dapat disimpan."
             )
 
+        # ====================================
+        # DATA
+        # ====================================
 
-        title = data.get("title") or "Untitled File"
+        title = (
+            data.get("title")
+            or "Untitled File"
+        )
 
         creator = message.from_user.full_name
 
         share_media = data.get(
             "share_media",
-            True
+            True,
         )
 
         is_paid = data.get(
             "is_paid",
-            False
+            False,
         )
 
         price = data.get(
             "price",
-            0
+            0,
         )
 
         payment_provider = data.get(
             "payment_provider"
         )
 
-
         pool = await get_pool()
 
-
-
-        # =========================
+        # ====================================
         # UPDATE USER
-        # =========================
+        # ====================================
 
         await pool.execute(
             """
@@ -680,38 +880,55 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 username,
                 full_name
             )
-            VALUES($1,$2,$3)
+
+            VALUES(
+                $1,
+                $2,
+                $3
+            )
 
             ON CONFLICT(chat_id)
+
             DO UPDATE SET
+
                 username=EXCLUDED.username,
+
                 full_name=EXCLUDED.full_name
             """,
+
             user_id,
+
             message.from_user.username,
-            message.from_user.full_name
+
+            message.from_user.full_name,
         )
 
-
-
-        # =========================
+        # ====================================
         # GENERATE CODE
-        # =========================
+        # ====================================
 
-        import uuid
-
-        code = "Zyx" + uuid.uuid4().hex[:12]
+        code = (
+            "Zyx"
+            + uuid.uuid4().hex[:12]
+        )
 
         main_link = (
             f"https://t.me/{BOT_USERNAME}"
             f"?start=getFile_{code}"
         )
 
+        media_json = json.dumps(
+            media,
+            ensure_ascii=False,
+        )
+
+        media_count = len(media)
 
 
-        # =========================
+
+        # ====================================
         # SAVE FILE
-        # =========================
+        # ====================================
 
         await pool.execute(
             """
@@ -735,69 +952,57 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
             )
 
             VALUES(
-                $1,$2,$3,$4,$5,$6,
-                $7,$8,$9,NULL,
-                $10,$11,$12,
-                $13,$14,$15
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                $9,
+                NULL,
+                $10,
+                $11,
+                $12,
+                0,
+                0,
+                0
             )
             """,
 
             code,
             title,
             creator,
-            json.dumps(media),
+            media_json,
             share_media,
             share_media,
             user_id,
             user_id,
-            len(media),
+            media_count,
             is_paid,
             price,
             payment_provider,
-            0,
-            0,
-            0
         )
 
-
-
-        # =========================
+        # ====================================
         # SAVE MEDIA TABLE
-        # =========================
+        # ====================================
 
         values = []
 
-
-        for m in media:
+        for item in media:
 
             values.append(
                 (
                     code,
-
-                    int(
-                        m.get(
-                            "message_id"
-                        )
-                    ),
-
-                    m.get(
-                        "file_id"
-                    ),
-
-                    m.get(
-                        "type"
-                    ),
-
-                    m.get(
-                        "file_size",
-                        0
-                    ),
-
-                    title
+                    int(item["message_id"]),
+                    item["file_id"],
+                    item["type"],
+                    item.get("file_size", 0),
+                    title,
                 )
             )
-
-
 
         if values:
 
@@ -813,40 +1018,80 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 )
 
                 VALUES(
-                    $1,$2,$3,$4,$5,$6
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6
                 )
                 """,
-                values
+                values,
             )
+
+        # ====================================
+        # CLEAR STATE
+        # ====================================
 
         await state.clear()
 
-        media_mode=(
-            f"💰 Media Mode : Paid (Rp {price:,})".replace(",",".")
-            if is_paid
-            else
-            "🆓 Media Mode : Free"
+        # ====================================
+        # FILE INFO
+        # ====================================
+
+        video_count = sum(
+            1
+            for x in media
+            if x["type"] == "video"
         )
 
-        video_count=sum(1 for m in media if m.get("type")=="video")
-        photo_count=sum(1 for m in media if m.get("type")=="photo")
-        document_count=sum(1 for m in media if m.get("type")=="document")
+        photo_count = sum(
+            1
+            for x in media
+            if x["type"] == "photo"
+        )
 
-        files=[]
+        document_count = sum(
+            1
+            for x in media
+            if x["type"] == "document"
+        )
+
+        files = []
 
         if video_count:
-            files.append(f"{video_count} Videos")
+            files.append(
+                f"{video_count} Videos"
+            )
 
         if photo_count:
-            files.append(f"{photo_count} Photos")
+            files.append(
+                f"{photo_count} Photos"
+            )
 
         if document_count:
-            files.append(f"{document_count} Documents")
+            files.append(
+                f"{document_count} Documents"
+            )
 
-        files_info=" • ".join(files)
+        files_info = (
+            " • ".join(files)
+            if files
+            else "0 File"
+        )
 
-        text=(
-            "✅ <b>FILE SAVED SUCCESSFULLY</b>\n\n"
+        media_mode = (
+            f"💰 Media Mode : Paid (Rp {price:,})".replace(",", ".")
+            if is_paid
+            else "🆓 Media Mode : Free"
+        )
+
+        # ====================================
+        # SUCCESS MESSAGE
+        # ====================================
+
+        text = (
+            "✅ <b>FILE BERHASIL DISIMPAN</b>\n\n"
             f"📝 Title : <b>{title}</b>\n"
             f"📋 Files : {files_info}\n"
             f"🔑 Code : <code>{code}</code>\n"
@@ -859,7 +1104,7 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 [
                     InlineKeyboardButton(
                         text="🔗 Open Link",
-                        url=main_link
+                        url=main_link,
                     )
                 ]
             ]
@@ -868,48 +1113,51 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=kb
+            reply_markup=kb,
         )
 
-        # =========================
+        # ====================================
         # LOG CHANNEL
-        # =========================
+        # ====================================
 
         try:
 
             me = await message.bot.get_me()
 
+            log_text = (
+                text
+                + f"\n\n👤 User ID : <code>{user_id}</code>"
+                + f"\n🤖 Upload Bot : @{me.username}"
+            )
 
             await message.bot.send_message(
-                CHANNEL_ID,
-                text
-                +
-                f"\n\n🤖 Upload Bot : @{me.username}",
-                parse_mode="HTML"
+                chat_id=CHANNEL_ID,
+                text=log_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
             )
 
+        except Exception:
 
-        except Exception as e:
-
-            logging.error(
-                f"LOG CHANNEL ERROR: {e}"
+            logging.exception(
+                "Gagal mengirim log upload."
             )
 
+    # ====================================
+    # ERROR
+    # ====================================
 
+    except Exception:
 
-    except Exception as e:
-
-
-        logging.error(
-            f"FINAL SAVE ERROR: {e}"
+        logging.exception(
+            "FINAL SAVE ERROR"
         )
-
 
         await state.update_data(
             saving=False
         )
 
-
         await message.answer(
-            "❌ Gagal menyimpan file."
+            "❌ Terjadi kesalahan saat menyimpan file.\n"
+            "Silakan coba lagi beberapa saat."
         )
