@@ -9,7 +9,8 @@ from typing import Dict
 from contextlib import asynccontextmanager
 
 from aiogram import Router, F
-from aiogram.exceptions import TelegramBadRequest, RetryAfter
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -76,7 +77,7 @@ async def copy_to_storage(
 
                 return msg
 
-            except RetryAfter as e:
+            except TelegramRetryAfter as e:
 
                 logging.warning(
                     "FloodWait %ss ketika copy storage.",
