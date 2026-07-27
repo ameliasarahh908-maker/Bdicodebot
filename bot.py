@@ -1,5 +1,7 @@
+from aiohttp import ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import BOT_TOKEN
 
@@ -11,15 +13,19 @@ from middlewares.maintenance import MaintenanceMiddleware
 # BOT INIT
 # =========================
 
+session = AiohttpSession(
+    timeout=ClientTimeout(total=120)
+)
+
 bot = Bot(
     BOT_TOKEN,
+    session=session,
     default=DefaultBotProperties(
         parse_mode="HTML"
     )
 )
 
 dp = Dispatcher()
-
 
 
 # =========================
@@ -34,7 +40,6 @@ dp.callback_query.middleware(
     BanMiddleware()
 )
 
-
 dp.message.middleware(
     MaintenanceMiddleware()
 )
@@ -42,7 +47,6 @@ dp.message.middleware(
 dp.callback_query.middleware(
     MaintenanceMiddleware()
 )
-
 
 
 # =========================
@@ -85,7 +89,6 @@ from handlers.admin import router as admin_router
 from handlers.notify import router as notify_router
 
 
-
 # =========================
 # REGISTER ROUTERS
 # =========================
@@ -95,29 +98,24 @@ dp.include_router(test_router)
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
 
-
 # FILE SYSTEM
 dp.include_router(upfile_router)
 dp.include_router(getfile_router)
 dp.include_router(page_router)
 dp.include_router(open_menu_router)
 
-
-# MENU UTAMA
+# MENU
 dp.include_router(menu_router)
 
-
-# STORE SYSTEM
+# STORE
 dp.include_router(store_router)
 dp.include_router(top_router)
-
 
 # SEARCH
 dp.include_router(search_router)
 dp.include_router(search_price_router)
 dp.include_router(search_store_router)
 dp.include_router(new_code_router)
-
 
 # ACCOUNT
 dp.include_router(account_router)
@@ -129,63 +127,12 @@ dp.include_router(reward_router)
 dp.include_router(pay_router)
 dp.include_router(cancel_router)
 
-
 # WITHDRAW
 dp.include_router(withdraw_router)
 dp.include_router(withdraw_confirm_router)
 
-
 # ADMIN
 dp.include_router(admin_router)
 
-
-# NOTIFICATION PALING AKHIR
+# NOTIFICATION (PALING AKHIR)
 dp.include_router(notify_router)
-
-
-
-# =========================
-# MAIN
-# =========================
-
-import asyncio
-import logging
-
-from database import (
-    get_pool,
-    init_db,
-    close_db
-)
-
-
-async def main():
-
-    logging.basicConfig(
-        level=logging.INFO
-    )
-
-
-    # CONNECT DATABASE
-    await get_pool()
-
-
-    # INIT DATABASE
-    await init_db()
-
-
-    try:
-
-        await dp.start_polling(
-            bot
-        )
-
-
-    finally:
-
-        await close_db()
-
-
-
-if __name__ == "__main__":
-
-    asyncio.run(main())
