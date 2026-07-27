@@ -1,7 +1,5 @@
-from aiohttp import ClientTimeout
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
-from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import BOT_TOKEN
 
@@ -13,13 +11,8 @@ from middlewares.maintenance import MaintenanceMiddleware
 # BOT INIT
 # =========================
 
-session = AiohttpSession(
-    timeout=ClientTimeout(total=120)
-)
-
 bot = Bot(
-    BOT_TOKEN,
-    session=session,
+    token=BOT_TOKEN,
     default=DefaultBotProperties(
         parse_mode="HTML"
     )
