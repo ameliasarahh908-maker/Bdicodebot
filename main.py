@@ -32,11 +32,18 @@ tasks = {}
 
 
 def create_task(name, coro):
-    if name in tasks and not tasks[name].done():
-        logging.warning(f"{name} already running")
-        return
 
-    tasks[name] = asyncio.create_task(coro)
+    async def runner():
+        try:
+            await coro
+        except asyncio.CancelledError:
+            logging.warning(f"{name} cancelled")
+            raise
+        except Exception:
+            logging.exception(f"{name} crashed")
+            raise
+
+    tasks[name] = asyncio.create_task(runner())
     logging.info(f"{name} started")
 
 
