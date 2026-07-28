@@ -7,6 +7,7 @@ from aiogram.types import (
 )
 from utils.user import set_vip, set_vvip
 from database import get_pool
+from urllib.parse import quote
 
 
 router = Router()
@@ -165,11 +166,19 @@ async def show_reward(message: Message):
 
 
 
+    link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
+
+    share_text = (
+        "🎁 Ayo gabung menggunakan link referral aku!\n\n"
+        "📦 Simpan file tanpa ribet.\n"
+        "💎 Dapatkan berbagai keuntungan dan reward.\n\n"
+        "Klik link di bawah ini 👇"
+    )
+
     share_url = (
         "https://t.me/share/url?"
-        f"url={link}"
-        "&text=🎁 Ayo%20gabung%20menggunakan%20link%20referral%20aku!%0A%0A"
-        "Dapatkan%20berbagai%20keuntungan%20dan%20reward."
+        f"url={quote(link)}"
+        f"&text={quote(share_text)}"
     )
 
     kb.append([
