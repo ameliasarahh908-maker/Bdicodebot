@@ -167,12 +167,10 @@ async def show_reward(message: Message):
 
 
     link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
-
     share_text = (
         "🎁 Ayo gabung menggunakan link referral aku!\n\n"
         "📦 Simpan file tanpa ribet.\n"
         "💎 Dapatkan berbagai keuntungan dan reward.\n\n"
-        "Klik link di bawah ini 👇"
     )
 
     share_url = (
