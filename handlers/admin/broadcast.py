@@ -153,32 +153,9 @@ async def get_targets(
 
         rows=await pool.fetch(
             """
-            SELECT telegram_id
-            FROM users
-            WHERE telegram_id IS NOT NULL
-            """
-        )
-
-
-        for r in rows:
-
-            result.append(
-                {
-                    "chat_id":r["telegram_id"],
-                    "type":"user"
-                }
-            )
-
-
-
-    # CHANNEL / GROUP
-    if target in ("chat","all"):
-
-
-        rows=await pool.fetch(
-            """
             SELECT chat_id
-            FROM chats
+            FROM users
+            WHERE chat_id IS NOT NULL
             """
         )
 
@@ -188,9 +165,15 @@ async def get_targets(
             result.append(
                 {
                     "chat_id":r["chat_id"],
-                    "type":"chat"
+                    "type":"user"
                 }
             )
+
+
+
+    # CHANNEL / GROUP
+    if target in ("chat", "all"):
+        pass
 
 
 
