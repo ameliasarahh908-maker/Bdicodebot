@@ -264,7 +264,7 @@ async def ban_user(message: Message, state: FSMContext):
 
     await pool.execute(
         "UPDATE users SET is_banned=TRUE WHERE chat_id=$1",
-        user["telegram_id"]
+        user[" chat_id"]
     )
 
     await message.answer("🚫 User diban")
@@ -350,7 +350,7 @@ async def vvip_user(message: Message, state: FSMContext):
 
     if key.isdigit():
         user = await pool.fetchrow(
-            "SELECT chat_id FROM users WHERE telegram_id=$1",
+            "SELECT chat_id FROM users WHERE chat_id=$1",
             int(key)
         )
     else:
