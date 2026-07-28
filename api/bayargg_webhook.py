@@ -138,7 +138,7 @@ async def webhook(request: Request):
                     THEN NOW() + ($2 || ' days')::interval
                     ELSE vip_until + ($2 || ' days')::interval
                 END
-            WHERE telegram_id = $1
+            WHERE user_id = $1
             """,
             vip_tx["user_id"],
             days
@@ -252,7 +252,7 @@ async def webhook(request: Request):
             """
             UPDATE users
             SET balance = balance + $1
-            WHERE telegram_id = $2
+            WHERE user_id = $2
             """,
             file_tx["paid_price"],
             file_tx["owner_id"]
