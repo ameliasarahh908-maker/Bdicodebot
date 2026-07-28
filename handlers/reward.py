@@ -19,13 +19,11 @@ BOT_USERNAME = "ZyxFidxBot"
 # =========================
 
 def make_bar(current, target):
+    if target <= 0:
+        return "░" * 10
 
-    filled = int((current / target) * 10)
-
-    if filled > 10:
-        filled = 10
-
-    return "█" * filled + "░" * (10-filled)
+    filled = min(int((current / target) * 10), 10)
+    return "█" * filled + "░" * (10 - filled)
 
 
 
@@ -167,10 +165,17 @@ async def show_reward(message: Message):
 
 
 
+    share_url = (
+        "https://t.me/share/url?"
+        f"url={link}"
+        "&text=🎁 Ayo%20gabung%20menggunakan%20link%20referral%20aku!%0A%0A"
+        "Dapatkan%20berbagai%20keuntungan%20dan%20reward."
+    )
+
     kb.append([
         InlineKeyboardButton(
-            text="🔗 Bagikan Link",
-            url=link
+            text="📤 Bagikan Referral",
+            url=share_url
         )
     ])
 
@@ -399,4 +404,12 @@ async def claim_50(call:CallbackQuery):
         "💎 <b>VVIP 7 HARI AKTIF</b>\n\n"
         "Semua reward referral selesai 🎉",
         parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "none")
+async def none_callback(call: CallbackQuery):
+    await call.answer(
+        "✅ Reward ini sudah diklaim.",
+        show_alert=False
     )
