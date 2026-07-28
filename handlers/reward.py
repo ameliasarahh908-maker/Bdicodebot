@@ -5,7 +5,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
-
+from utils.user import set_vip, set_vvip
 from database import get_pool
 
 
@@ -251,17 +251,13 @@ async def claim_10(call:CallbackQuery):
         )
 
 
+    await set_vip(call.from_user.id, 1)
+
     await pool.execute(
         """
         UPDATE users
-        SET
-            vip=TRUE,
-            is_vip=TRUE,
-            vip_expired=
-            COALESCE(vip_expired,NOW())
-            + INTERVAL '1 day',
-            ref_10_claimed=TRUE
-        WHERE chat_id=$1
+        SET ref_10_claimed=TRUE
+        WHERE user_id=$1
         """,
         call.from_user.id
     )
@@ -312,17 +308,13 @@ async def claim_20(call:CallbackQuery):
         )
 
 
+    await set_vip(call.from_user.id, 5)
+
     await pool.execute(
         """
         UPDATE users
-        SET
-            vip=TRUE,
-            is_vip=TRUE,
-            vip_expired=
-            COALESCE(vip_expired,NOW())
-            + INTERVAL '5 day',
-            ref_20_claimed=TRUE
-        WHERE chat_id=$1
+        SET ref_20_claimed=TRUE
+        WHERE user_id=$1
         """,
         call.from_user.id
     )
@@ -372,24 +364,13 @@ async def claim_50(call:CallbackQuery):
         )
 
 
+    await set_vvip(call.from_user.id, 7)
+
     await pool.execute(
         """
         UPDATE users
-        SET
-            is_vvip=TRUE,
-            is_vip=TRUE,
-
-            vvip_expired=
-            COALESCE(vvip_expired,NOW())
-            + INTERVAL '7 day',
-
-            vip_expired=
-            COALESCE(vip_expired,NOW())
-            + INTERVAL '7 day',
-
-            ref_50_claimed=TRUE
-
-        WHERE chat_id=$1
+        SET ref_50_claimed=TRUE
+        WHERE user_id=$1
         """,
         call.from_user.id
     )
