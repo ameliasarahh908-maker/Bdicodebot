@@ -2,8 +2,6 @@ import asyncio
 import logging
 import re
 
-from datetime import datetime, timedelta
-
 from aiogram import Router, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery
@@ -153,32 +151,6 @@ async def process_start(message, loading, user_id, username):
                         "SELECT referral_count FROM users WHERE user_id=$1",
                         ref_id
                     )
-
-                    now = datetime.utcnow()
-
-                    # =========================
-                    # 🎁 AUTO REWARD
-                    # =========================
-                    if total == 10:
-                        await pool.execute(
-                            "UPDATE users SET vip=true, vip_until=$1 WHERE user_id=$2",
-                            now + timedelta(days=1),
-                            ref_id
-                        )
-
-                    elif total == 20:
-                        await pool.execute(
-                            "UPDATE users SET vip=true, vip_until=$1 WHERE user_id=$2",
-                            now + timedelta(days=5),
-                            ref_id
-                        )
-
-                    elif total == 50:
-                        await pool.execute(
-                            "UPDATE users SET vvip=true, vvip_until=$1 WHERE user_id=$2",
-                            now + timedelta(days=7),
-                            ref_id
-                        )
 
     # =========================
     # GET USER
