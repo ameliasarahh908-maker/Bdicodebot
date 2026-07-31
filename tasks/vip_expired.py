@@ -8,18 +8,19 @@ logger = logging.getLogger(__name__)
 
 async def vip_expired_worker():
 
+    logger.info("👑 VIP expired worker running...")
+
     while True:
 
         try:
 
             result = await execute(
                 """
-                UPDATE users
+                UPDATE vip_users
                 SET
-                    vip = FALSE
-                WHERE vip = TRUE
-                AND vip_until IS NOT NULL
-                AND vip_until < NOW()
+                    plan = 'FREE'
+                WHERE expired_at IS NOT NULL
+                AND expired_at < NOW()
                 """
             )
 
