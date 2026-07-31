@@ -55,8 +55,6 @@ from handlers.getfile import router as getfile_router
 from handlers.page import router as page_router
 from handlers.open_menu import router as open_menu_router
 
-from handlers.menu import router as menu_router
-
 from handlers.store import router as store_router
 from handlers.top import router as top_router
 
@@ -96,9 +94,6 @@ dp.include_router(upfile_router)
 dp.include_router(getfile_router)
 dp.include_router(page_router)
 dp.include_router(open_menu_router)
-
-# MENU
-dp.include_router(menu_router)
 
 # STORE
 dp.include_router(store_router)
