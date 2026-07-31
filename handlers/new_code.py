@@ -1,20 +1,15 @@
 from aiogram import Router, F
-from aiogram.types import (
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    CallbackQuery
-)
+from aiogram.types import CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import get_pool
+
 
 router = Router()
 
 
-# =========================
-# MENU NEW CODE
-# =========================
 @router.callback_query(F.data == "new_code")
-async def new_file(call: CallbackQuery):
+async def new_code_menu(call: CallbackQuery):
 
     pool = await get_pool()
 
@@ -22,8 +17,9 @@ async def new_file(call: CallbackQuery):
         """
         SELECT
             code,
-            media_count,
-            created_at
+            title,
+            price,
+            view_count
         FROM files
         ORDER BY created_at DESC
         LIMIT 10
@@ -32,57 +28,53 @@ async def new_file(call: CallbackQuery):
 
 
     if not rows:
-
-        await call.message.answer(
-            "❌ Belum ada code baru."
+        return await call.answer(
+            "❌ Belum ada code baru.",
+            show_alert=True
         )
-
-        return await call.answer()
-
 
 
     text = (
-        "🆕 <b>10 CODE TERBARU</b>\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        "🆕 <b>CODE TERBARU</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
     )
 
 
-    for i, row in enumerate(rows, start=1):
+    for i, row in enumerate(rows, 1):
 
-        created = row["created_at"]
-
-        if created:
-            waktu = created.strftime(
-                "%d-%m-%Y %H:%M"
-            )
-        else:
-            waktu = "-"
-
+        harga = (
+            "Gratis"
+            if row["price"] == 0
+            else f"Rp{row['price']:,}"
+        )
 
         text += (
-            f"{i}. 🔑 <code>{row['code']}</code>\n"
-            f"📦 Media : {row['media_count']} file\n"
-            f"🕒 {waktu}\n\n"
+            f"{i}. 📌 <b>{row['title']}</b>\n"
+            f"🔑 <code>{row['code']}</code>\n"
+            f"💰 Harga : {harga}\n"
+            f"👁 Dibuka : {row['view_count']}x\n\n"
         )
 
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⬅️ Kembali",
-                    callback_data="home"
-                )
-            ]
-        ]
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="⬅️ Kembali",
+        callback_data="code"
     )
 
+    kb.button(
+        text="🏠 Home",
+        callback_data="home"
+    )
 
-    await call.message.answer(
+    kb.adjust(1)
+
+
+    await call.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=kb.as_markup()
     )
-
 
     await call.answer()
