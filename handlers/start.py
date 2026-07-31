@@ -183,32 +183,53 @@ async def process_start(message, loading, user_id, username):
 # =========================
 async def render_home_fast(bot, message, user_id, username, status):
 
+    pool = await get_pool()
+
     bot_username = (await bot.me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
-    text = (
-        "<b>✨ 𝐙𝐘𝐗𝐅𝐈𝐃𝐗𝐁𝐎𝐓 ✨</b>\n\n"
-        "📦 Selamat datang di bot penyimpanan file.\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 ID : <code>{user_id}</code>\n"
-        f"👤 Username : {username}\n"
-        f"💎 Status : <b>{status}</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 Referral kamu:\n{ref_link}\n\n"
-        "👇 Silakan pilih menu di bawah."
-    )
+    # Saldo
+    balance = await pool.fetchval(
+        "SELECT balance FROM users WHERE user_id=$1",
+        user_id
+    ) or 0
+
+    # Total Referral
+    referral = await pool.fetchval(
+        "SELECT referral_count FROM users WHERE user_id=$1",
+        user_id
+    ) or 0
+
+    text = f"""
+<b>✨ 𝐁𝐎𝐓 𝐌𝐀𝐑𝐊𝐄𝐓 ✨</b>
+
+👤 <b>𝐈𝐃 𝐀𝐊𝐔𝐍</b>
+<code>{user_id}</code>
+
+💰 <b>𝐒𝐀𝐋𝐃𝐎</b>
+<b>Rp {balance:,.0f}</b>
+
+👥 <b>𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
+<b>{referral} Orang</b>
+
+━━━━━━━━━━━━━━━━━━
+
+🔗 <b>𝐋𝐈𝐍𝐊 𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
+
+<code>{ref_link}</code>
+"""
 
     try:
         await message.edit_text(
             text,
             parse_mode="HTML",
-            reply_markup=await home_kb(user_id)
+            reply_markup=await home_kb(user_id),
+            disable_web_page_preview=True
         )
 
     except TelegramBadRequest as e:
         if "message is not modified" in str(e):
             return
-
         raise
 
     except Exception:
@@ -216,7 +237,8 @@ async def render_home_fast(bot, message, user_id, username, status):
             user_id,
             text,
             parse_mode="HTML",
-            reply_markup=await home_kb(user_id)
+            reply_markup=await home_kb(user_id),
+            disable_web_page_preview=True
         )
 
 
