@@ -16,6 +16,11 @@ async def code_menu(call: CallbackQuery):
     )
 
     kb.button(
+        text="🆕 New Code",
+        callback_data="new_code"
+    )
+
+    kb.button(
         text="📂 Category Code",
         callback_data="category_code"
     )
