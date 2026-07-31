@@ -541,7 +541,7 @@ async def check_payment(call: CallbackQuery):
                 user_id,
                 type,
                 amount,
-                note
+                description
             )
             VALUES
             ($1,$2,$3,$4)
