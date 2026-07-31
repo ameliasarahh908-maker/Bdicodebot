@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from utils.redis_client import init_redis
 from config import TIMEZONE
 from bot import bot, dp
-from database import get_pool, close_db
+from database import get_pool, close_db, init_db
 
 from tasks.auto_delete import auto_delete_worker
 from tasks.payment_worker import payment_worker
@@ -90,6 +90,7 @@ async def lifespan(app: FastAPI):
     logging.info("APP STARTING")
 
     await get_pool()
+    await init_db()
     await init_redis()
 
     logging.info("Skipping Telegram startup check...")
