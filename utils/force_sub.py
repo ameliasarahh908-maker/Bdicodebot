@@ -22,7 +22,7 @@ async def check_force_sub(bot: Bot, user_id: int) -> bool:
     """
     Return:
         True  -> User sudah join semua channel.
-        False -> User belum join salah satu channel.
+        False -> User belum join / terjadi error.
     """
 
     for channel_id in CHANNELS:
@@ -39,30 +39,25 @@ async def check_force_sub(bot: Bot, user_id: int) -> bool:
             ):
                 return False
 
-        except TelegramBadRequest as e:
-            logging.error(
-                "ForceSub TelegramBadRequest | Channel=%s User=%s Error=%s",
-                channel_id,
-                user_id,
-                e,
+        except TelegramBadRequest:
+            logging.exception(
+                "ForceSub TelegramBadRequest | %s",
+                channel_id
             )
-            return True
+            return False
 
-        except TelegramForbiddenError as e:
-            logging.error(
-                "ForceSub TelegramForbiddenError | Channel=%s User=%s Error=%s",
-                channel_id,
-                user_id,
-                e,
+        except TelegramForbiddenError:
+            logging.exception(
+                "ForceSub TelegramForbiddenError | %s",
+                channel_id
             )
-            return True
+            return False
 
         except Exception:
             logging.exception(
-                "ForceSub Unknown Error | Channel=%s User=%s",
-                channel_id,
-                user_id,
+                "ForceSub Unknown Error | %s",
+                channel_id
             )
-            return True
+            return False
 
     return True
