@@ -13,7 +13,8 @@ router = Router()
 BOT_USERNAME = "botmarketRobot"  # Ganti dengan username bot
 
 
-async def open_account(target, user_id):
+async def open_account(message: Message, user_id: int):
+
     pool = await get_pool()
 
     user = await pool.fetchrow(
@@ -29,20 +30,14 @@ async def open_account(target, user_id):
     ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{user_id}"
 
     text = (
-        "━━━━━━━━━━━━━━\n"
         "👤 <b>ACCOUNT INFO</b>\n"
-        "━━━━━━━━━━━━━━\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"🆔 <b>User ID</b>\n"
         f"<code>{user_id}</code>\n\n"
-
         "🎯 <b>REFERRAL</b>\n"
         f"👥 Total Undangan : <b>{referral_count}</b>\n\n"
-
         "🔗 <b>Link Referral</b>\n"
-        f"<code>{ref_link}</code>\n\n"
-
-        "━━━━━━━━━━━━━━\n"
-        "🚀 Ajak teman untuk mendapatkan bonus referral."
+        f"<code>{ref_link}</code>\n"
     )
 
     kb = InlineKeyboardMarkup(
@@ -68,28 +63,31 @@ async def open_account(target, user_id):
         ]
     )
 
-    if isinstance(target, Message):
-        await target.answer(
-            text,
-            parse_mode="HTML",
-            reply_markup=kb,
-            disable_web_page_preview=True
-        )
-    else:
-        await target.edit_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=kb,
-            disable_web_page_preview=True
-        )
+    await message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb,
+        disable_web_page_preview=True
+    )
 
 
 @router.callback_query(F.data == "account")
 async def account_handler(call: CallbackQuery):
-    await open_account(call.message, call.from_user.id)
+
+    await open_account(
+        call.message,
+        call.from_user.id
+    )
+
     await call.answer()
 
 
 @router.message(F.text.in_(["👤 Akun", "👤 Account"]))
 async def account(message: Message):
-    await open_account(message, message.from_user.id)
+
+    loading = await message.answer("⏳ Loading...")
+
+    await open_account(
+        loading,
+        message.from_user.id
+    )
