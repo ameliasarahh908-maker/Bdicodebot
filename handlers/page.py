@@ -88,21 +88,16 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     media = file["media"]
 
     if isinstance(media, str):
-
         try:
             media = json.loads(media)
-
         except Exception as e:
-
-            print("JSON ERROR", e)
+            print("MEDIA JSON ERROR", e)
             return False
 
 
     if not media:
-
         print("MEDIA EMPTY")
         return False
-
 
 
     total_page = (
@@ -116,11 +111,10 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     )
 
 
-    chunk = media[
-        (page - 1) * PAGE_SIZE:
-        page * PAGE_SIZE
-    ]
+    start = (page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
 
+    chunk = media[start:end]
 
 
     share_media = file["share_media"]
@@ -132,9 +126,8 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     protect = not share_media
 
 
-
     caption = (
-        "ZyxFidxBot\n"
+        "botmarketRobot\n"
         "━━━━━━━━━━━━━━━\n\n"
         f"🔑 CODE : {code}\n"
         f"📦 PAGE : {page}/{total_page}\n"
@@ -142,14 +135,8 @@ async def send_page(bot, chat_id, user_id, code, page=1):
     )
 
 
-
     album = []
 
-
-
-    # =========================
-    # BUILD ALBUM 10 MEDIA
-    # =========================
 
     for index, item in enumerate(chunk):
 
@@ -158,7 +145,6 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
 
         file_id = item.get("file_id")
-
 
         if not file_id:
             continue
@@ -170,67 +156,44 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         ).lower()
 
 
-
         cap = caption if index == 0 else None
 
 
+        if media_type == "photo":
 
-        try:
-
-            if media_type == "photo":
-
-                album.append(
-                    InputMediaPhoto(
-                        media=file_id,
-                        caption=cap
-                    )
+            album.append(
+                InputMediaPhoto(
+                    media=file_id,
+                    caption=cap
                 )
-
-
-            elif media_type == "video":
-
-                album.append(
-                    InputMediaVideo(
-                        media=file_id,
-                        caption=cap
-                    )
-                )
-
-
-            else:
-
-                album.append(
-                    InputMediaDocument(
-                        media=file_id,
-                        caption=cap
-                    )
-                )
-
-
-        except Exception as e:
-
-            print(
-                "BUILD ALBUM ERROR",
-                e
             )
 
 
+        elif media_type == "video":
+
+            album.append(
+                InputMediaVideo(
+                    media=file_id,
+                    caption=cap
+                )
+            )
+
+
+        else:
+
+            album.append(
+                InputMediaDocument(
+                    media=file_id,
+                    caption=cap
+                )
+            )
+
 
     if not album:
-
-        print(
-            "ALBUM EMPTY",
-            code,
-            page
-        )
-
+        print("ALBUM EMPTY")
         return False
 
 
-
-    # =========================
-    # SEND 1 BUBBLE
-    # =========================
 
     try:
 
@@ -243,25 +206,77 @@ async def send_page(bot, chat_id, user_id, code, page=1):
                 protect_content=protect
             )
 
-
         else:
 
             await bot.send_media_group(
                 chat_id,
-                album,
-                protect_content=protect
+                album
             )
 
+
+            if protect:
+
+                await bot.send_message(
+                    chat_id,
+                    "🔒 File dilindungi"
+                )
 
 
     except Exception as e:
 
         print(
-            "SEND ALBUM ERROR",
+            "SEND MEDIA ERROR",
             e
         )
 
         return False
+
+
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+
+            build_page_buttons(
+                code,
+                page,
+                total_page
+            ),
+
+            [
+                InlineKeyboardButton(
+                    text="📤 OPEN ALL",
+                    callback_data=f"all:{code}"
+                )
+            ]
+
+        ]
+    )
+
+
+    nav = await bot.send_message(
+        chat_id,
+        (
+            f"📦 PAGE {page}/{total_page}\n"
+            f"✅ {len(album)}/{len(chunk)} Media"
+        ),
+        reply_markup=keyboard
+    )
+
+
+    NAV_CACHE[
+        (user_id, code)
+    ] = nav.message_id
+
+
+    print(
+        "PAGE SENT",
+        code,
+        page,
+        len(album)
+    )
+
+
+    return True
 
 
 
