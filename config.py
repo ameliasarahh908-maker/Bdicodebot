@@ -13,7 +13,7 @@ TIMEZONE = "Asia/Jakarta"
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-BOT_USERNAME = "ZyxFidxBot"
+BOT_USERNAME = "botmarketRobot"
 BOT_URL = f"https://t.me/{BOT_USERNAME}"
 
 # =========================
@@ -36,7 +36,7 @@ BAYARGG_WEBHOOK_SECRET = os.getenv("BAYARGG_WEBHOOK_SECRET")
 # CHANNEL
 # =========================
 CHANNEL_ID = int(
-    os.getenv("CHANNEL_ID", "-1003978483597")
+    os.getenv("CHANNEL_ID", "-1004282236842")
 )
 
 GROUP_ID = int(
