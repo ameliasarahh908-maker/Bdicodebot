@@ -102,7 +102,7 @@ dp.include_router(code_router)
 # SEARCH
 dp.include_router(search_router)
 dp.include_router(price_router)
-dp.include_router(category_code_router)
+dp.include_router(category_router)
 dp.include_router(new_code_router)
 
 # ACCOUNT
