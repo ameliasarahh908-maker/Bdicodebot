@@ -199,18 +199,44 @@ async def send_page(bot, chat_id, user_id, code, page=1):
 
         if len(album) == 1:
 
-            await bot.send_document(
-                chat_id,
-                album[0].media,
-                caption=caption,
-                protect_content=protect
-            )
+            item = chunk[0]
+
+            file_id = item.get("file_id")
+            media_type = item.get("type", "document").lower()
+
+            if media_type == "photo":
+
+                await bot.send_photo(
+                    chat_id,
+                    file_id,
+                    caption=caption,
+                    protect_content=protect
+                )
+
+            elif media_type == "video":
+
+                await bot.send_video(
+                    chat_id,
+                    file_id,
+                    caption=caption,
+                    protect_content=protect
+                )
+
+            else:
+
+                await bot.send_document(
+                    chat_id,
+                    file_id,
+                    caption=caption,
+                    protect_content=protect
+                )
 
         else:
 
             await bot.send_media_group(
                 chat_id,
-                album
+                album,
+                protect_content=protect
             )
 
 
@@ -272,61 +298,6 @@ async def send_page(bot, chat_id, user_id, code, page=1):
         "PAGE SENT",
         code,
         page,
-        len(album)
-    )
-
-
-    return True
-
-
-
-    # =========================
-    # BUTTON
-    # =========================
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-
-            build_page_buttons(
-                code,
-                page,
-                total_page
-            ),
-
-            [
-                InlineKeyboardButton(
-                    text="📤 OPEN ALL",
-                    callback_data=f"all:{code}"
-                )
-            ]
-
-        ]
-    )
-
-
-
-    nav = await bot.send_message(
-        chat_id,
-        (
-            f"📦 PAGE {page}/{total_page}\n"
-            f"✅ {len(album)}/{len(chunk)} Media"
-        ),
-        reply_markup=keyboard
-    )
-
-
-    NAV_CACHE[
-        (user_id, code)
-    ] = nav.message_id
-
-
-
-    print(
-        "ALBUM SENT",
-        code,
-        "PAGE",
-        page,
-        "MEDIA",
         len(album)
     )
 
