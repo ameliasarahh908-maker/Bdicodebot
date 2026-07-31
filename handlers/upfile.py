@@ -131,6 +131,60 @@ class UploadState(StatesGroup):
     wait_price=State()
 
 
+# ==========================================
+# START UPLOAD BUTTON
+# ==========================================
+
+@router.callback_query(F.data=="upfile")
+async def start_upload(call: CallbackQuery, state: FSMContext):
+
+    await call.answer()
+
+    if not await check_force_sub(
+        call.bot,
+        call.from_user.id
+    ):
+        return await call.message.answer(
+            "❌ Kamu belum join channel.",
+            reply_markup=join_kb()
+        )
+
+    await state.clear()
+
+    await state.set_state(
+        UploadState.upload
+    )
+
+    await state.update_data(
+        upload_mode=True,
+        media=[],
+        title=None,
+        share_media=True,
+        is_paid=False,
+        price=0,
+        payment_provider=None,
+        saving=False,
+        progress_msg_id=None
+    )
+
+    try:
+        await call.message.edit_text(
+            "📦 <b>UPLOAD MODE</b>\n\n"
+            "Silakan kirim file.\n"
+            f"Maksimal {MAX_MEDIA} media.\n\n"
+            "Jika selesai tekan STOP & SAVE.",
+            parse_mode="HTML"
+        )
+    except:
+        await call.message.answer(
+            "📦 <b>UPLOAD MODE</b>\n\n"
+            "Silakan kirim file.\n"
+            f"Maksimal {MAX_MEDIA} media.\n\n"
+            "Jika selesai tekan STOP & SAVE.",
+            parse_mode="HTML"
+        )
+
+
 import random
 
 async def generate_code():
