@@ -73,8 +73,8 @@ async def show_top_code(target, page=1):
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🏪 Store",
-                        callback_data="store"
+                        text="↪️ Kembali",
+                        callback_data="code"
                     )
                 ]
             ]
