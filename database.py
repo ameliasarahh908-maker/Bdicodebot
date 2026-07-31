@@ -31,7 +31,9 @@ async def get_pool():
                     min_size=1,
                     max_size=10,
                     command_timeout=60,
-                    max_inactive_connection_lifetime=300
+                    max_inactive_connection_lifetime=300,
+                    statement_cache_size=0,
+                    ssl="require",
                 )
 
                 # DEBUG DATABASE
