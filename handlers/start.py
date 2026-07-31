@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from aiogram import Router, F
@@ -11,7 +10,7 @@ from utils.force_sub import check_force_sub
 from keyboards.menu import home_kb
 from keyboards.join import join_kb
 from database import get_pool
-from utils.user import get_user_status
+
 
 router = Router()
 
@@ -50,20 +49,12 @@ async def process_start(message, loading, user_id, username):
     if not sub:
         bot_username = (await bot.me()).username
 
-        try:
-            await loading.edit_text(
-                "❌ *JOIN REQUIRED*\n\n"
-                "Silakan join semua channel terlebih dahulu.\n\n"
-                "📤 Bagikan link referral kamu untuk mendapatkan bonus setiap pengguna baru.",
-                reply_markup=join_kb(
-                    bot_username,
-                    user_id
-                ),
-                parse_mode="Markdown"
-            )
-        except TelegramBadRequest as e:
-            if "message is not modified" not in str(e):
-                raise
+        await loading.edit_text(
+            "❌ <b>JOIN REQUIRED</b>\n\n"
+            "Silakan join semua channel terlebih dahulu.",
+            reply_markup=join_kb(bot_username, user_id),
+            parse_mode="HTML"
+        )
         return
 
     pool = await get_pool()
@@ -75,12 +66,17 @@ async def process_start(message, loading, user_id, username):
 
     await pool.execute(
         """
-        INSERT INTO users(user_id,chat_id,username,full_name)
-        VALUES($1,$1,$2,$3)
+        INSERT INTO users(
+            user_id,
+            username,
+            fullname
+        )
+        VALUES($1,$2,$3)
+
         ON CONFLICT(user_id)
         DO UPDATE SET
-            username=EXCLUDED.username,
-            full_name=EXCLUDED.full_name
+            username = EXCLUDED.username,
+            fullname = EXCLUDED.fullname
         """,
         user_id,
         username,
@@ -89,11 +85,7 @@ async def process_start(message, loading, user_id, username):
 
     args = message.text.split(maxsplit=1)
 
-    if (
-        is_new_user
-        and len(args) > 1
-        and args[1].startswith("ref_")
-    ):
+    if is_new_user and len(args) > 1 and args[1].startswith("ref_"):
 
         ref_id = args[1].replace("ref_", "", 1)
 
@@ -124,8 +116,8 @@ async def process_start(message, loading, user_id, username):
                         """
                         UPDATE users
                         SET
-                            referral_count=referral_count+1,
-                            balance=balance+200
+                            total_referral = total_referral + 1,
+                            balance = balance + 200
                         WHERE user_id=$1
                         """,
                         ref_id
@@ -135,12 +127,12 @@ async def process_start(message, loading, user_id, username):
                         await bot.send_message(
                             ref_id,
                             "🎉 <b>Referral Berhasil!</b>\n\n"
-                            "👤 1 pengguna baru bergabung menggunakan link kamu.\n"
-                            "💰 Bonus Referral : <b>Rp200</b>\n\n"
-                            "Saldo telah otomatis ditambahkan.",
+                            "👤 Pengguna baru bergabung.\n"
+                            "💰 Bonus: <b>Rp200</b>\n\n"
+                            "Saldo otomatis bertambah.",
                             parse_mode="HTML"
                         )
-                    except Exception:
+                    except:
                         pass
 
     user = await pool.fetchrow(
@@ -148,45 +140,42 @@ async def process_start(message, loading, user_id, username):
         user_id
     )
 
-    status = await get_user_status(pool, user_id)
-    status = (status or "free").lower()
-
     await render_home_fast(
         bot,
         loading,
         user_id,
-        user["username"] or "unknown",
-        status
+        user["username"] or "unknown"
     )
 
 
+async def render_home_fast(bot, message, user_id, username):
 
-async def render_home_fast(bot,message,user_id,username,status):
-    pool=await get_pool()
+    pool = await get_pool()
 
-    bot_username=(await bot.me()).username
-    ref_link=f"https://t.me/{bot_username}?start=ref_{user_id}"
+    bot_username = (await bot.me()).username
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
-    balance=await pool.fetchval(
+    balance = await pool.fetchval(
         "SELECT balance FROM users WHERE user_id=$1",
         user_id
     ) or 0
 
-    referral=await pool.fetchval(
-        "SELECT referral_count FROM users WHERE user_id=$1",
+    referral = await pool.fetchval(
+        "SELECT total_referral FROM users WHERE user_id=$1",
         user_id
     ) or 0
 
-    text=f"""
+    text = f"""
 <b>✨ 𝐁𝐎𝐓 𝐌𝐀𝐑𝐊𝐄𝐓 ✨</b>
-👤 <b>𝐈𝐃 𝐀𝐊𝐔𝐍</b>
+
+👤 <b>ID AKUN</b>
 <code>{user_id}</code>
-💰 <b>𝐒𝐀𝐋𝐃𝐎</b>
+💰 <b>SALDO</b>
 <b>Rp {balance:,.0f}</b>
-👥 <b>𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
+👥 <b>REFERRAL</b>
 <b>{referral} Orang</b>
 ━━━━━━━━━━━━━━━━━━
-🔗 <b>𝐋𝐈𝐍𝐊 𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
+🔗 <b>LINK REFERRAL</b>
 <code>{ref_link}</code>
 """
 
@@ -197,11 +186,13 @@ async def render_home_fast(bot,message,user_id,username,status):
             reply_markup=await home_kb(user_id),
             disable_web_page_preview=True
         )
+
     except TelegramBadRequest as e:
         if "message is not modified" in str(e):
             return
         raise
-    except Exception:
+
+    except:
         await bot.send_message(
             user_id,
             text,
@@ -211,48 +202,43 @@ async def render_home_fast(bot,message,user_id,username,status):
         )
 
 
-@router.callback_query(F.data=="home")
-async def back_home(call:CallbackQuery,state:FSMContext):
+@router.callback_query(F.data == "home")
+async def back_home(call: CallbackQuery, state: FSMContext):
+
     await state.clear()
 
-    user_id=call.from_user.id
+    user_id = call.from_user.id
 
     try:
-        ok=await check_force_sub(call.bot,user_id)
-    except Exception:
-        ok=True
+        ok = await check_force_sub(call.bot, user_id)
+    except:
+        ok = True
 
     if not ok:
-        bot_username=(await call.bot.me()).username
+
+        bot_username = (await call.bot.me()).username
 
         await call.message.answer(
-            "❌ *JOIN REQUIRED*\n\n"
-            "Silakan join semua channel terlebih dahulu.\n\n"
-            "📤 Bagikan link referral kamu untuk mendapatkan bonus setiap pengguna baru.",
-            parse_mode="Markdown",
-            reply_markup=join_kb(
-                bot_username,
-                user_id
-            )
+            "❌ <b>JOIN REQUIRED</b>\n\n"
+            "Silakan join semua channel terlebih dahulu.",
+            parse_mode="HTML",
+            reply_markup=join_kb(bot_username, user_id)
         )
+
         return await call.answer()
 
-    pool=await get_pool()
+    pool = await get_pool()
 
-    user=await pool.fetchrow(
+    user = await pool.fetchrow(
         "SELECT username FROM users WHERE user_id=$1",
         user_id
     )
-
-    status=await get_user_status(pool,user_id)
-    status=(status or "free").lower()
 
     await render_home_fast(
         call.bot,
         call.message,
         user_id,
-        user["username"] or "unknown",
-        status
+        user["username"] or "unknown"
     )
 
     await call.answer()
