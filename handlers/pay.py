@@ -507,6 +507,52 @@ async def check_payment(call: CallbackQuery):
         )
 
         # =========================
+        # 💰 BAGI HASIL SELLER 50%
+        # =========================
+
+        price = file["price"] or 0
+
+        # 50% untuk platform
+        platform_fee = int(price * 0.50)
+
+        # 50% untuk owner file
+        seller_income = price - platform_fee
+
+
+        # tambah saldo owner
+        await execute(
+            """
+            UPDATE users
+            SET 
+                balance = COALESCE(balance,0) + $1,
+                total_earn = COALESCE(total_earn,0) + $1
+            WHERE chat_id=$2
+            """,
+            seller_income,
+            file["owner_id"]
+        )
+
+
+        # simpan riwayat pendapatan
+        await execute(
+            """
+            INSERT INTO transactions
+            (
+                user_id,
+                type,
+                amount,
+                note
+            )
+            VALUES
+            ($1,$2,$3,$4)
+            """,
+            file["owner_id"],
+            "file_sale",
+            seller_income,
+            f"Pendapatan file {purchase['file_code']}"
+        )
+
+        # =========================
         # 🔥 DETEKSI VIP / VVIP
         # =========================
         code = purchase["file_code"].lower()
