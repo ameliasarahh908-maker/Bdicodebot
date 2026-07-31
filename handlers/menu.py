@@ -1,21 +1,53 @@
-from aiogram import Router, F
-from aiogram.types import Message
-
-router = Router()
-
-
-@router.message(F.text == "🏪 Store")
-async def store(message: Message):
-
-    from handlers.store import store_command
-
-    await store_command(message)
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 
 
+async def home_kb(user_id: int):
 
-@router.message(F.text == "🏆 Top 10 Code")
-async def top(message: Message):
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
 
-    from handlers.top import top_command
+            [
+                InlineKeyboardButton(
+                    text="📤 Upload File",
+                    callback_data="upfile"
+                ),
+                InlineKeyboardButton(
+                    text="📥 Get File",
+                    callback_data="getfile"
+                )
+            ],
 
-    await top_command(message)
+            [
+                InlineKeyboardButton(
+                    text="📦 Code",
+                    callback_data="code"
+                ),
+                InlineKeyboardButton(
+                    text="💸 Withdraw",
+                    callback_data="withdraw"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="👤 Account",
+                    callback_data="account"
+                ),
+                InlineKeyboardButton(
+                    text="📢 Info Channel",
+                    callback_data="channel_info"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="❓ Bantuan",
+                    callback_data="help"
+                )
+            ]
+
+        ]
+    )
