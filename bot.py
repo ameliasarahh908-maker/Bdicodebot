@@ -57,6 +57,7 @@ from handlers.open_menu import router as open_menu_router
 
 from handlers.store import router as store_router
 from handlers.top import router as top_router
+from handlers.code import router as code_router
 
 from handlers.search_code import router as search_router
 from handlers.search_price import router as search_price_router
@@ -98,6 +99,7 @@ dp.include_router(open_menu_router)
 # STORE
 dp.include_router(store_router)
 dp.include_router(top_router)
+dp.include_router(code_router)
 
 # SEARCH
 dp.include_router(search_router)
