@@ -56,6 +56,7 @@ async def bayar_webhook(request: Request):
         SET status='paid',
             paid_at=NOW()
         WHERE payment_id=$1
+        AND status!='paid'
         """,
         invoice_id
     )
