@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import re
 
 from aiogram import Router, F
 from aiogram.filters import CommandStart
@@ -30,29 +29,6 @@ async def start_cmd(message: Message, state: FSMContext):
         if message.from_user.username
         else message.from_user.full_name
     )
-
-    # =========================
-    # DEEP LINK FILE
-    # =========================
-    args = message.text.split(maxsplit=1)
-
-    if len(args) > 1:
-        payload = args[1].strip()
-
-        # FORMAT BARU
-        match = re.search(r"Zyx\d{8}File\d{8}", payload, re.IGNORECASE)
-
-        if match:
-            code = match.group(0)
-            from handlers.getfile import open_file_by_code
-            return await open_file_by_code(message, code)
-
-        # FORMAT LAMA
-        if payload.startswith("getFile_"):
-            code = payload.replace("getFile_", "", 1).strip()
-            if code:
-                from handlers.getfile import open_file_by_code
-                return await open_file_by_code(message, code)
 
     # =========================
     # NORMAL START
