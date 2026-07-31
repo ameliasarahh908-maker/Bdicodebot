@@ -66,7 +66,7 @@ from handlers.search_store import router as search_store_router
 
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
-from handlers.vvip import router as vvip_router
+from handlers.help import router as help_router
 from handlers.reward import router as reward_router
 
 from handlers.pay import router as pay_router
@@ -110,7 +110,7 @@ dp.include_router(new_code_router)
 # ACCOUNT
 dp.include_router(account_router)
 dp.include_router(my_code_router)
-dp.include_router(vvip_router)
+dp.include_router(help_router)
 dp.include_router(reward_router)
 
 # PAYMENT
