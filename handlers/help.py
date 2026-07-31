@@ -1,9 +1,12 @@
 import asyncio
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+
 router = Router()
+
 
 HELP_CACHE = {}
 
@@ -17,6 +20,7 @@ def set_cache(key, value):
 
 
 async def loading(call: CallbackQuery):
+
     try:
         await call.message.edit_text("⏳ Loading...")
     except:
@@ -26,18 +30,25 @@ async def loading(call: CallbackQuery):
 
 
 def kb_builder(buttons):
+
     builder = InlineKeyboardBuilder()
 
     for text, data in buttons:
-        builder.button(text=text, callback_data=data)
+        builder.button(
+            text=text,
+            callback_data=data
+        )
 
     builder.adjust(1)
+
     return builder.as_markup()
+
 
 
 # =====================================
 # HELP MENU
 # =====================================
+
 @router.callback_query(F.data == "help")
 async def help_menu(call: CallbackQuery):
 
@@ -49,29 +60,33 @@ async def help_menu(call: CallbackQuery):
         "━━━━━━━━━━━━━━\n\n"
         "Selamat datang di pusat bantuan.\n\n"
         "Silakan pilih panduan yang ingin dipelajari.\n\n"
-        "Semua tutorial dibuat agar pengguna baru bisa langsung memahami cara menggunakan bot dari awal sampai menghasilkan penghasilan."
+        "Tutorial dibuat agar pengguna baru dapat memahami sistem BOT MARKET dengan mudah."
     )
+
 
     kb = kb_builder([
         ("📤 Cara Upload File", "help_upfile"),
         ("📥 Cara Get File", "help_getfile"),
         ("💰 Cara Mendapatkan Cuan", "help_money"),
         ("🏦 Cara Withdraw", "help_withdraw"),
-        ("💎 VVIP", "help_vvip"),
         ("🏠 Home", "home"),
     ])
 
+
     await call.message.edit_text(
         text,
-        reply_markup=kb
+        reply_markup=kb,
+        parse_mode="HTML"
     )
 
     await call.answer()
 
 
+
 # =====================================
 # TEMPLATE
 # =====================================
+
 async def help_template(call, key, content):
 
     cache = get_cache(key)
@@ -80,37 +95,46 @@ async def help_template(call, key, content):
         set_cache(key, content)
         cache = content
 
+
     await loading(call)
+
 
     kb = kb_builder([
         ("🔙 Kembali", "help")
     ])
 
+
     await call.message.edit_text(
         cache,
-        reply_markup=kb
+        reply_markup=kb,
+        parse_mode="HTML"
     )
+
 
     await call.answer()
 
 
+
 # =====================================
-# UPFILE
+# UPLOAD FILE
 # =====================================
+
 @router.callback_query(F.data == "help_upfile")
 async def help_upfile(call: CallbackQuery):
 
     await help_template(
         call,
         "upfile",
-        """━━━━━━━━━━━━━━
+        """
+━━━━━━━━━━━━━━
 📤 <b>CARA UPLOAD FILE</b>
 ━━━━━━━━━━━━━━
 
-1️⃣ Masuk ke menu <b>UP FILE</b>
+1️⃣ Masuk ke menu <b>Upload File</b>
 
 2️⃣ Kirim file yang ingin dijual.
-Bot mendukung:
+
+Support:
 • Foto
 • Video
 • Dokumen
@@ -118,231 +142,163 @@ Bot mendukung:
 • RAR
 • APK
 • PDF
-• Dan file lainnya.
+• Dan file lainnya
 
-3️⃣ Setelah semua file selesai dikirim,
-tekan tombol <b>SELESAI / DONE</b>.
+3️⃣ Setelah selesai upload,
+tekan tombol selesai.
 
 4️⃣ Masukkan harga file.
 
 Contoh:
+
 1000
 5000
 10000
 25000
-50000
 
-Semakin menarik isi file,
-semakin tinggi harga yang bisa dipasang.
+5️⃣ Bot akan membuat CODE otomatis.
 
-5️⃣ Bot akan membuat CODE secara otomatis.
+6️⃣ Bagikan CODE tersebut kepada pembeli.
 
-Contoh:
-ABC123XYZ
-
-6️⃣ Bagikan CODE tersebut kepada orang lain.
-
-Jika seseorang membeli atau membuka file berbayar tersebut,
-saldo Anda akan otomatis bertambah ke akun bot.
+Jika ada pembelian,
+saldo akan masuk otomatis.
 
 ━━━━━━━━━━━━━━
+
 Tips:
 
-✔ Gunakan judul yang menarik.
-
 ✔ Upload file berkualitas.
-
-✔ Promosikan kode Anda agar lebih banyak pembeli.
+✔ Gunakan judul menarik.
+✔ Promosikan CODE kamu.
 """
     )
+
 
 
 # =====================================
 # GET FILE
 # =====================================
+
 @router.callback_query(F.data == "help_getfile")
 async def help_getfile(call: CallbackQuery):
 
     await help_template(
         call,
         "getfile",
-        """━━━━━━━━━━━━━━
+        """
+━━━━━━━━━━━━━━
 📥 <b>CARA GET FILE</b>
 ━━━━━━━━━━━━━━
 
-1️⃣ Masuk ke menu GET FILE.
+1️⃣ Masuk menu Get File.
 
-2️⃣ Masukkan CODE yang diberikan.
+2️⃣ Masukkan CODE file.
 
 Contoh:
+
 ABC123XYZ
 
-3️⃣ Sistem akan mengecek status file.
+3️⃣ Sistem akan mengecek CODE.
 
-Jika GRATIS
+Jika gratis:
 ✅ File langsung dikirim.
 
-Jika BERBAYAR
-💳 Anda harus melakukan pembayaran terlebih dahulu.
+Jika berbayar:
+💳 Lakukan pembayaran terlebih dahulu.
 
 4️⃣ Setelah pembayaran berhasil,
-bot akan mengirim seluruh file secara otomatis.
+file akan dikirim otomatis.
 
 ━━━━━━━━━━━━━━
 
-Semua pembelian akan langsung diproses oleh sistem tanpa perlu menunggu admin.
+Semua proses dilakukan otomatis oleh sistem.
 """
     )
 
 
+
 # =====================================
-# MONEY
+# MENDAPATKAN CUAN
 # =====================================
+
 @router.callback_query(F.data == "help_money")
 async def help_money(call: CallbackQuery):
 
     await help_template(
         call,
         "money",
-        """━━━━━━━━━━━━━━
+        """
+━━━━━━━━━━━━━━
 💰 <b>CARA MENDAPATKAN CUAN</b>
 ━━━━━━━━━━━━━━
 
-Bot ini memungkinkan Anda menghasilkan uang dari file yang Anda upload.
+Kamu bisa mendapatkan penghasilan dari file yang dijual.
 
-Langkah-langkah:
+Caranya:
 
 ① Upload file.
 
 ② Tentukan harga.
 
-Contoh:
-
-Rp1.000
-Rp2.000
-Rp5.000
-Rp10.000
-Rp20.000
-Rp50.000
-
 ③ Bot membuat CODE.
 
-④ Sebarkan CODE tersebut ke:
+④ Bagikan CODE ke:
 
 • Telegram
-• Facebook
 • WhatsApp
+• Facebook
 • Instagram
 • TikTok
-• Discord
-• Forum
 • Website
 
-⑤ Ketika ada orang membeli file tersebut,
-saldo Anda akan otomatis masuk.
+⑤ Setiap pembelian akan masuk ke saldo akun.
 
 ━━━━━━━━━━━━━━
 
-Semakin banyak orang membeli file Anda,
-semakin besar penghasilan yang diperoleh.
-
-Tidak ada batas jumlah upload.
-
-Anda dapat memiliki ratusan bahkan ribuan kode aktif sekaligus.
-
-Semua saldo dapat dicek melalui menu ACCOUNT.
+Semakin banyak file dan promosi,
+semakin besar peluang penghasilan.
 """
     )
+
 
 
 # =====================================
 # WITHDRAW
 # =====================================
+
 @router.callback_query(F.data == "help_withdraw")
 async def help_withdraw(call: CallbackQuery):
 
     await help_template(
         call,
         "withdraw",
-        """━━━━━━━━━━━━━━
+        """
+━━━━━━━━━━━━━━
 🏦 <b>CARA WITHDRAW</b>
 ━━━━━━━━━━━━━━
 
-1️⃣ Pastikan saldo Anda mencukupi.
+1️⃣ Pastikan saldo mencukupi.
 
-2️⃣ Masuk ke menu WITHDRAW.
+2️⃣ Masuk menu Withdraw.
 
-3️⃣ Pilih metode pencairan.
-
-4️⃣ Masukkan nominal withdraw.
-
-Contoh:
-10000
-50000
-100000
-
-5️⃣ Masukkan nomor rekening atau e-wallet.
+3️⃣ Pilih metode pembayaran.
 
 Contoh:
 
-DANA
-OVO
-GoPay
-ShopeePay
-Bank BCA
-Bank BRI
-Bank Mandiri
-Bank BNI
+• DANA
+• OVO
+• GoPay
+• ShopeePay
+• Bank
 
-6️⃣ Periksa kembali data Anda.
+4️⃣ Masukkan nominal.
 
-7️⃣ Kirim permintaan Withdraw.
+5️⃣ Kirim permintaan.
+
+Admin akan memproses sesuai antrean.
 
 ━━━━━━━━━━━━━━
 
-Setelah permintaan dikirim,
-admin akan memproses withdraw sesuai antrean.
-
-Status withdraw dapat dilihat melalui menu akun.
-
-Pastikan nama penerima dan nomor rekening sudah benar.
-"""
-    )
-
-
-# =====================================
-# VVIP
-# =====================================
-@router.callback_query(F.data == "help_vvip")
-async def help_vvip(call: CallbackQuery):
-
-    await help_template(
-        call,
-        "vvip",
-        """━━━━━━━━━━━━━━
-💎 <b>VVIP MEMBER</b>
-━━━━━━━━━━━━━━
-
-VVIP adalah paket premium yang memberikan berbagai keuntungan.
-
-Keuntungan:
-
-✅ Unlimited Buka File
-
-✅ Prioritas Server
-
-✅ Prioritas Support
-
-✅ Update Fitur lebih lengkap
-
-✅ Akses Fitur Eksklusif
-
-✅ Sistem Lebih Stabil
-
-✅ Performa buka file Lebih Banyak
-
-VVIP sangat cocok bagi pengguna yang serius ingin menghasilkan uang menggunakan bot ini.
-
-Informasi harga dapat dilihat pada menu VVIP.
+Pastikan data pencairan benar.
 """
     )
