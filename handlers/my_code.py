@@ -1,5 +1,12 @@
+from math import ceil
+
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+
 from database import get_pool
 
 router = Router()
@@ -7,55 +14,59 @@ router = Router()
 LIMIT = 10
 
 
-# =========================
-# LOADING
-# =========================
-async def loading(call: CallbackQuery):
-    try:
-        await call.message.edit_text("⏳ Loading...")
-    except:
-        pass
-
-
-# =========================
-# MASK CODE
-# =========================
 def mask_code(code: str):
-
     if len(code) <= 8:
         return "*" * len(code)
-
     return code[:4] + "****" + code[-2:]
 
 
-# =========================
-# MY CODE
-# =========================
 @router.callback_query(F.data.startswith("my_code"))
 async def my_code(call: CallbackQuery):
 
-    await loading(call)
-
     page = 1
 
-    parts = call.data.split(":")
-
-    if len(parts) > 1:
+    if ":" in call.data:
         try:
-            page = int(parts[1])
+            page = int(call.data.split(":")[1])
         except:
             page = 1
 
-
-    if page < 1:
-        page = 1
-
-
-    offset = (page - 1) * LIMIT
-
-
     pool = await get_pool()
 
+    total = await pool.fetchval(
+        """
+        SELECT COUNT(*)
+        FROM files
+        WHERE owner_id=$1
+        """,
+        call.from_user.id
+    )
+
+    if total == 0:
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Kembali",
+                        callback_data="account"
+                    )
+                ]
+            ]
+        )
+
+        return await call.message.edit_text(
+            "📦 <b>MY CODE</b>\n\n"
+            "❌ Kamu belum memiliki code.",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+
+    max_page = ceil(total / LIMIT)
+
+    page = max(1, min(page, max_page))
+
+    offset = (page - 1) * LIMIT
 
     rows = await pool.fetch(
         """
@@ -63,18 +74,10 @@ async def my_code(call: CallbackQuery):
             code,
             price,
             sold_count,
-            total_income,
-            is_paid
-
+            total_income
         FROM files
-
-        WHERE
-            owner_id=$1
-            AND code IS NOT NULL
-
-        ORDER BY
-            created_at DESC
-
+        WHERE owner_id=$1
+        ORDER BY created_at DESC
         LIMIT $2 OFFSET $3
         """,
         call.from_user.id,
@@ -82,81 +85,65 @@ async def my_code(call: CallbackQuery):
         offset
     )
 
-
     text = (
         "📦 <b>MY CODE</b>\n"
-        "━━━━━━━━━━━━━━\n\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"📄 Total Code : <b>{total}</b>\n"
+        f"📑 Halaman : <b>{page}/{max_page}</b>\n\n"
     )
 
+    for i, row in enumerate(rows, start=offset + 1):
 
-    if not rows:
+        harga = (
+            "Gratis"
+            if row["price"] == 0
+            else f"Rp {row['price']:,}".replace(",", ".")
+        )
 
-        text += "❌ Belum ada code."
+        text += (
+            f"<b>{i}. <code>{mask_code(row['code'])}</code></b>\n"
+            f"💰 Harga : {harga}\n"
+            f"🛒 Terjual : {row['sold_count']}x\n"
+            f"💵 Pendapatan : Rp {row['total_income']:,}\n\n"
+            .replace(",", ".")
+        )
 
+    nav = []
 
-    else:
-
-        for i, row in enumerate(rows, start=1):
-
-            code = mask_code(row["code"])
-
-            price = row["price"] or 0
-
-            sold = row["sold_count"] or 0
-
-            income = row["total_income"] or 0
-
-
-            text += (
-                f"<b>{i + offset}. <code>{code}</code></b>\n"
+    if page > 1:
+        nav.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=f"my_code:{page-1}"
             )
+        )
 
+    nav.append(
+        InlineKeyboardButton(
+            text=f"{page}/{max_page}",
+            callback_data="noop"
+        )
+    )
 
-            if price > 0:
-
-                text += (
-                    f"💰 Harga : Rp {price:,}\n"
-                    f"🛒 Terjual : {sold}x\n"
-                    f"💵 Pendapatan : Rp {income:,}\n\n"
-                ).replace(",", ".")
-
-
-            else:
-
-                text += (
-                    "🆓 Gratis\n\n"
-                )
-
+    if page < max_page:
+        nav.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=f"my_code:{page+1}"
+            )
+        )
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-
+            nav,
             [
                 InlineKeyboardButton(
-                    text="⬅️ Prev",
-                    callback_data=f"my_code:{max(1,page-1)}"
-                ),
-
-                InlineKeyboardButton(
-                    text=f"📄 {page}",
-                    callback_data="noop"
-                ),
-
-                InlineKeyboardButton(
-                    text="Next ➡️",
-                    callback_data=f"my_code:{page+1}"
-                )
-            ],
-
-            [
-                InlineKeyboardButton(
-                    text="🔙 Kembali",
+                    text="⬅️ Kembali",
                     callback_data="account"
                 )
             ]
         ]
     )
-
 
     await call.message.edit_text(
         text,
@@ -164,15 +151,9 @@ async def my_code(call: CallbackQuery):
         reply_markup=kb
     )
 
-
     await call.answer()
 
 
-
-# =========================
-# NOOP
-# =========================
 @router.callback_query(F.data == "noop")
 async def noop(call: CallbackQuery):
-
     await call.answer()
