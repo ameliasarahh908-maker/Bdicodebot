@@ -10,8 +10,8 @@ from handlers.page import send_page
 
 logger = logging.getLogger(__name__)
 
-BUY_CHANNEL_ID = -1003894841696
-BOT_USERNAME = "ZyxFidxBot"
+BUY_CHANNEL_ID = -1004413314849
+BOT_USERNAME = "botmarketRobot
 
 
 async def bayar_webhook(request: Request):
