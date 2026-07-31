@@ -179,20 +179,14 @@ async def render_home_fast(bot,message,user_id,username,status):
 
     text=f"""
 <b>✨ 𝐁𝐎𝐓 𝐌𝐀𝐑𝐊𝐄𝐓 ✨</b>
-
 👤 <b>𝐈𝐃 𝐀𝐊𝐔𝐍</b>
 <code>{user_id}</code>
-
 💰 <b>𝐒𝐀𝐋𝐃𝐎</b>
 <b>Rp {balance:,.0f}</b>
-
 👥 <b>𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
 <b>{referral} Orang</b>
-
 ━━━━━━━━━━━━━━━━━━
-
 🔗 <b>𝐋𝐈𝐍𝐊 𝐑𝐄𝐅𝐄𝐑𝐑𝐀𝐋</b>
-
 <code>{ref_link}</code>
 """
 
