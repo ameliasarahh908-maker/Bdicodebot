@@ -1,38 +1,53 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from utils.user_lang import get_user_language
+from aiogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 
 
-async def home_kb(user_id):
+async def home_kb(user_id: int):
 
-    lang = await get_user_language(user_id)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
 
-    if lang == "id":
-        store = "🏪 Store"
-        top = "🏆 Top 10 Code"
-        account = "👤 Akun"
-        upgrade = "💎 Upgrade"
-        reward = "🎁 Reward"
-    else:
-        store = "🏪 Store"
-        top = "🏆 Top 10 Code"
-        account = "👤 Account"
-        upgrade = "💎 Upgrade"
-        reward = "🎁 Reward"
-
-
-    return ReplyKeyboardMarkup(
-        keyboard=[
             [
-                KeyboardButton(text=store),
-                KeyboardButton(text=top)
+                InlineKeyboardButton(
+                    text="📤 Upload File",
+                    callback_data="upfile"
+                ),
+                InlineKeyboardButton(
+                    text="📥 Get File",
+                    callback_data="getfile"
+                )
             ],
+
             [
-                KeyboardButton(text=account),
-                KeyboardButton(text=upgrade)
+                InlineKeyboardButton(
+                    text="📦 Code",
+                    callback_data="code"
+                ),
+                InlineKeyboardButton(
+                    text="💸 Withdraw",
+                    callback_data="withdraw"
+                )
             ],
+
             [
-                KeyboardButton(text=reward)
+                InlineKeyboardButton(
+                    text="👤 Account",
+                    callback_data="account"
+                ),
+                InlineKeyboardButton(
+                    text="📢 Info Channel",
+                    callback_data="channel_info"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="❓ Bantuan",
+                    callback_data="help"
+                )
             ]
-        ],
-        resize_keyboard=True
+
+        ]
     )
