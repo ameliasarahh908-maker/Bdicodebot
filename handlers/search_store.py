@@ -1,12 +1,6 @@
 from aiogram import Router, F
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import get_pool
 
@@ -14,112 +8,142 @@ from database import get_pool
 router = Router()
 
 
-class SearchStore(StatesGroup):
-    waiting_keyword = State()
-
-
-# =========================
-# OPEN SEARCH
-# =========================
-
-@router.callback_query(
-    F.data == "store_search"
-)
-async def store_search(
-    call: CallbackQuery,
-    state: FSMContext
-):
-
-    await state.set_state(
-        SearchStore.waiting_keyword
-    )
-
-    await call.message.answer(
-        "🔎 Kirim nama atau kode yang ingin dicari."
-    )
-
-    await call.answer()
-
-
-# =========================
-# SEARCH RESULT
-# =========================
-
-@router.message(
-    SearchStore.waiting_keyword
-)
-async def search_result(
-    message: Message,
-    state: FSMContext
-):
-
-    keyword = message.text.strip()
+@router.callback_query(F.data == "category_code")
+async def category_menu(call: CallbackQuery):
 
     pool = await get_pool()
 
     rows = await pool.fetch(
         """
         SELECT
-            code,
-            title,
-            price,
-            view_count
+            category,
+            COUNT(*) as total
         FROM files
-        WHERE
-            title ILIKE $1
-            OR code ILIKE $1
-        ORDER BY
-            view_count DESC,
-            created_at DESC
-        LIMIT 10
-        """,
-        f"%{keyword}%"
+        GROUP BY category
+        ORDER BY total DESC
+        """
     )
-
-    await state.clear()
 
     if not rows:
 
-        return await message.answer(
-            "❌ Code tidak ditemukan."
+        await call.message.edit_text(
+            "❌ Belum ada category code.",
+            reply_markup=back_keyboard()
         )
 
+        return await call.answer()
+
+
+    kb = InlineKeyboardBuilder()
+
+
+    for row in rows:
+
+        kb.button(
+            text=f"📂 {row['category']} ({row['total']})",
+            callback_data=f"cat:{row['category']}"
+        )
+
+
+    kb.button(
+        text="⬅️ Kembali",
+        callback_data="code"
+    )
+
+
+    kb.adjust(1)
+
+
+    await call.message.edit_text(
+        "<b>📂 CATEGORY CODE</b>\n\n"
+        "Pilih kategori code yang ingin dilihat:",
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
+    )
+
+    await call.answer()
+
+
+
+@router.callback_query(F.data.startswith("cat:"))
+async def category_detail(call: CallbackQuery):
+
+    category = call.data.split(":",1)[1]
+
+    pool = await get_pool()
+
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            code,
+            title,
+            view_count
+        FROM files
+        WHERE category=$1
+        ORDER BY view_count DESC
+        LIMIT 10
+        """,
+        category
+    )
+
+
+    if not rows:
+
+        return await call.answer(
+            "Tidak ada code",
+            show_alert=True
+        )
+
+
     text = (
-        "🔎 <b>HASIL PENCARIAN</b>\n"
+        f"📂 <b>CATEGORY : {category}</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
     )
 
-    for i, row in enumerate(
-        rows,
-        start=1
-    ):
 
-        price = (
-            "Gratis"
-            if row["price"] == 0
-            else f"Rp{row['price']:,}"
-        )
+    for i,row in enumerate(rows,1):
 
         text += (
             f"{i}. 📌 <b>{row['title']}</b>\n"
             f"🔑 <code>{row['code']}</code>\n"
-            f"💰 {price}\n"
             f"👁 {row['view_count']}x\n\n"
         )
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🏪 Kembali Store",
-                    callback_data="store"
-                )
-            ]
-        ]
+
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="⬅️ Kembali Category",
+        callback_data="category_code"
     )
 
-    await message.answer(
+    kb.button(
+        text="🏠 Home",
+        callback_data="home"
+    )
+
+    kb.adjust(1)
+
+
+    await call.message.edit_text(
         text,
         parse_mode="HTML",
-        reply_markup=keyboard
+        reply_markup=kb.as_markup()
     )
+
+
+    await call.answer()
+
+
+
+def back_keyboard():
+
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="⬅️ Kembali",
+        callback_data="code"
+    )
+
+    return kb.as_markup()
