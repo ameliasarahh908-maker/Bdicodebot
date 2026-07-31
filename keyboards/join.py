@@ -8,8 +8,13 @@ def join_kb(bot_username: str, user_id: int):
 
     share_text = (
         "🤖 Ayo bergabung di BOT MARKET!\n\n"
-        "🎁 Daftar menggunakan link referral saya dan mulai sekarang juga.\n\n"
-        f"{ref_link}"
+        "🎁 Daftar menggunakan link referral saya dan mulai sekarang juga."
+    )
+
+    share_url = (
+        "https://t.me/share/url?"
+        f"url={quote(ref_link)}&"
+        f"text={quote(share_text)}"
     )
 
     return InlineKeyboardMarkup(
@@ -29,7 +34,7 @@ def join_kb(bot_username: str, user_id: int):
             [
                 InlineKeyboardButton(
                     text="📤 Bagikan Referral",
-                    url=f"https://t.me/share/url?text={quote(share_text)}"
+                    url=share_url
                 )
             ],
             [
