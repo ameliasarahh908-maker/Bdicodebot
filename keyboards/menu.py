@@ -26,8 +26,8 @@ def home_kb(user_id: int):
                     callback_data="code"
                 ),
                 InlineKeyboardButton(
-                    text="💰 Wallet",
-                    callback_data="wallet"
+                    text="💰 Ewallet",
+                    callback_data="ewallet"
                 )
             ],
 
