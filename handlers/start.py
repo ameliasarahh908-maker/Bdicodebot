@@ -180,7 +180,7 @@ Referral : <b>{referral}</b>
         await message.edit_text(
             text,
             parse_mode="HTML",
-            reply_markup=await home_kb(user_id),
+            reply_markup=home_kb(user_id),
             disable_web_page_preview=True
         )
 
@@ -194,7 +194,7 @@ Referral : <b>{referral}</b>
             user_id,
             text,
             parse_mode="HTML",
-            reply_markup=await home_kb(user_id),
+            reply_markup=home_kb(user_id),
             disable_web_page_preview=True
         )
 
