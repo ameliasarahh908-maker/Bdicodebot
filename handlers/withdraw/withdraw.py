@@ -37,7 +37,7 @@ async def withdraw_menu(call: CallbackQuery):
 
     kb.button(
         text="🏦 Rekening / E-Wallet",
-        callback_data="withdraw_account"
+        callback_data="ewallet"
     )
 
     if withdraw_is_open():
