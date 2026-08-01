@@ -51,7 +51,7 @@ async def market_detail(call: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text="💳 Beli Sekarang",
-                    callback_data=f"buy:{code}"
+                    callback_data=f"pay:{code}"
                 )
             ],
             [
