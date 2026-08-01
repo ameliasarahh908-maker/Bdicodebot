@@ -207,7 +207,7 @@ async def open_file_by_code(
         """
         SELECT *
         FROM files
-        WHERE LOWER(code)=LOWER($1)
+        WHERE LOWER(TRIM(code))=LOWER(TRIM($1))
         LIMIT 1
         """,
         code
@@ -358,6 +358,24 @@ async def open_file_by_code(
 # RECEIVE CODE + AUTO DETECT
 # =====================================
 
+CODE_REGEX = re.compile(
+    r"[a-z0-9]{30,60}",
+    re.IGNORECASE
+)
+
+
+def normalize_code(code: str):
+
+    return (
+        code
+        .strip()
+        .replace(" ", "")
+        .replace("\n", "")
+        .lower()
+    )
+
+
+
 @router.message(F.text)
 async def receive_code(
     message: Message,
@@ -371,21 +389,27 @@ async def receive_code(
         text = (message.text or "").strip()
 
 
+
         # =================================
         # GET FILE MODE
         # =================================
 
         if data.get("getfile_mode"):
 
+
             match = CODE_REGEX.search(text)
 
+
             if not match:
-                await state.clear()
 
                 try:
                     await message.delete()
                 except:
                     pass
+
+
+                await state.clear()
+
 
                 return await message.answer(
                     "❌ Itu bukan CODE bot saya.\n\n"
@@ -393,7 +417,9 @@ async def receive_code(
                 )
 
 
-            code = match.group(0)
+            code = normalize_code(
+                match.group(0)
+            )
 
 
             pool = await get_pool()
@@ -404,11 +430,12 @@ async def receive_code(
                 SELECT EXISTS(
                     SELECT 1
                     FROM files
-                    WHERE LOWER(code)=LOWER($1)
+                    WHERE LOWER(TRIM(code))=$1
                 )
                 """,
                 code
             )
+
 
 
             # hapus kode user
@@ -418,18 +445,23 @@ async def receive_code(
                 pass
 
 
+
             # hapus pesan GET FILE MODE
+
             progress_id = data.get(
                 "progress_msg_id"
             )
 
+
             if progress_id:
 
                 try:
+
                     await message.bot.delete_message(
                         chat_id=message.chat.id,
                         message_id=progress_id
                     )
+
                 except:
                     pass
 
@@ -445,6 +477,7 @@ async def receive_code(
                 )
 
 
+
             await open_file_by_code(
                 message,
                 code,
@@ -452,6 +485,7 @@ async def receive_code(
             )
 
             return
+
 
 
 
@@ -475,30 +509,10 @@ async def receive_code(
             return
 
 
-        code = match.group(0)
 
-
-        pool = await get_pool()
-
-
-        exists = await pool.fetchval(
-            """
-            SELECT EXISTS(
-                SELECT 1
-                FROM files
-                WHERE LOWER(code)=LOWER($1)
-            )
-            """,
-            code
+        code = normalize_code(
+            match.group(0)
         )
-
-
-        if not exists:
-
-            return await message.answer(
-                "❌ CODE tidak ditemukan.\n\n"
-                "Pastikan kode berasal dari bot ini."
-            )
 
 
         await open_file_by_code(
