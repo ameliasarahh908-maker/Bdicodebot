@@ -399,23 +399,61 @@ async def open_file_by_code(
 # =====================================
 
 CODE_REGEX = re.compile(
-    r"[0-9aiueo]{40}",
+    r"\b[0-9aiueo]{40}\b",
     re.IGNORECASE
 )
 
 
-@router.message(F.text.regexp(CODE_REGEX))
-async def auto_get_file(message: Message, state: FSMContext):
+@router.message(F.text)
+async def auto_get_file(
+    message: Message,
+    state: FSMContext
+):
 
-    match = CODE_REGEX.search(
-        message.text
-    )
+    text = message.text or ""
+
+
+    match = CODE_REGEX.search(text)
+
 
     if not match:
+
+        # kalau bukan kode bot
+        if "code" in text.lower():
+
+            return await message.answer(
+                "❌ Itu bukan CODE bot saya.\n\n"
+                "Silakan kirim kode file yang benar."
+            )
+
         return
 
 
+
     code = match.group(0)
+
+
+    pool = await get_pool()
+
+
+    exists = await pool.fetchval(
+        """
+        SELECT EXISTS(
+            SELECT 1
+            FROM files
+            WHERE LOWER(code)=LOWER($1)
+        )
+        """,
+        code
+    )
+
+
+    if not exists:
+
+        return await message.answer(
+            "❌ CODE tidak ditemukan.\n\n"
+            "Pastikan kode berasal dari bot ini."
+        )
 
 
     await open_file_by_code(
@@ -423,8 +461,6 @@ async def auto_get_file(message: Message, state: FSMContext):
         code,
         state
     )
-
-
 
 # =====================================
 # CANCEL GET FILE
