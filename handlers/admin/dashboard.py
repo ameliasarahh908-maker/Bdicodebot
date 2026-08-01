@@ -84,60 +84,21 @@ async def dashboard_text():
 
     pool = await get_pool()
 
-
-    # =====================
     # SYSTEM
-    # =====================
+    users = await safe_count(pool, "users")
+    files = await safe_count(pool, "files")
+    media = await safe_sum(pool, "media_count", "files")
 
-    users = await safe_count(
-        pool,
-        "users"
-    )
-
-
-    files = await safe_count(
-        pool,
-        "files"
-    )
-
-
-    media = await safe_sum(
-        pool,
-        "media_count",
-        "files"
-    )
-
-
-    # =====================
     # FINANCE
-    # =====================
+    balance = await safe_sum(pool, "balance", "users")
+    revenue = await safe_sum(pool, "total_income", "files")
 
-    balance = await safe_sum(
-        pool,
-        "balance",
-        "users"
-    )
-
-
-    revenue = await safe_sum(
-        pool,
-        "total_income",
-        "files"
-    )
-
-
-
-    # =====================
     # PAYMENT
-    # =====================
-
     pending_payment = 0
     paid_payment = 0
     failed_payment = 0
 
-
     try:
-
         pending_payment = await pool.fetchval(
             """
             SELECT COUNT(*)
@@ -145,7 +106,6 @@ async def dashboard_text():
             WHERE status='pending'
             """
         ) or 0
-
 
         paid_payment = await pool.fetchval(
             """
@@ -155,7 +115,6 @@ async def dashboard_text():
             """
         ) or 0
 
-
         failed_payment = await pool.fetchval(
             """
             SELECT COUNT(*)
@@ -164,134 +123,97 @@ async def dashboard_text():
             """
         ) or 0
 
-
     except Exception as e:
-        print(e)
+        print("PAYMENT ERROR:", e)
 
 
-
-    # =====================
     # WITHDRAW
-    # =====================
-
     withdraw_pending = 0
     withdraw_process = 0
     withdraw_success = 0
     withdraw_reject = 0
 
-
     try:
-
         withdraw_pending = await pool.fetchval(
             """
             SELECT COUNT(*)
-            FROM withdraw_requests
-            WHERE status='pending'
+            FROM withdraws
+            WHERE status IN(
+                'pending',
+                'instant_pending'
+            )
             """
         ) or 0
-
-
 
         withdraw_process = await pool.fetchval(
             """
             SELECT COUNT(*)
-            FROM withdraw_requests
-            WHERE status IN ('process','processing')
+            FROM withdraws
+            WHERE status IN(
+                'process',
+                'processing'
+            )
             """
         ) or 0
-
-
 
         withdraw_success = await pool.fetchval(
             """
             SELECT COUNT(*)
-            FROM withdraw_requests
-            WHERE status IN ('success','completed','paid')
+            FROM withdraws
+            WHERE status='success'
             """
         ) or 0
-
-
 
         withdraw_reject = await pool.fetchval(
             """
             SELECT COUNT(*)
-            FROM withdraw_requests
-            WHERE status IN ('reject','rejected','failed')
+            FROM withdraws
+            WHERE status='rejected'
             """
         ) or 0
 
-
-
     except Exception as e:
-
         print("WITHDRAW ERROR:", e)
-
 
 
     now = datetime.now(
         pytz.timezone("Asia/Jakarta")
-    ).strftime(
-        "%d-%m-%Y %H:%M WIB"
-    )
-
+    ).strftime("%d-%m-%Y %H:%M WIB")
 
 
     return (
-
         "🛠 <b>ADMIN PANEL</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-
         "📊 <b>SYSTEM</b>\n\n"
-
         f"👤 User     : {users}\n"
         f"📂 Files    : {files}\n"
         f"🖼 Media    : {media}\n\n"
 
-
-
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-
-
         "💰 <b>FINANCE</b>\n\n"
-
         f"👛 Balance  : {rupiah(balance)}\n"
         f"💵 Revenue  : {rupiah(revenue)}\n\n"
 
-
-
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-
-
         "💳 <b>PAYMENT</b>\n"
-
         f"🟡 Pending : {pending_payment}\n"
         f"🟢 Paid    : {paid_payment}\n"
         f"🔴 Failed  : {failed_payment}\n\n"
 
-
-
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-
-
         "🏧 <b>WITHDRAW</b>\n"
-
         f"🟡 Pending : {withdraw_pending}\n"
         f"🔵 Process : {withdraw_process}\n"
         f"🟢 Success : {withdraw_success}\n"
         f"🔴 Reject  : {withdraw_reject}\n\n"
 
-
-
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-
-
         f"🕒 Update : {now}"
-
     )
 
 
