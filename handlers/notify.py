@@ -162,7 +162,11 @@ async def notify_text(
         "grup",
         "channel",
         "ch",
-        "info"
+        "info",
+        "bokep",
+        "bocil",
+        "indo",
+        "ngewe"
     }
 
 
