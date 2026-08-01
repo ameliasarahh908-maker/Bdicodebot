@@ -188,46 +188,6 @@ async def getfile_start(
             progress_msg_id=progress_id
         )
 
-# =====================================
-# RECEIVE CODE
-# =====================================
-
-@router.message(GetFileState.waiting_code)
-async def receive_code(
-    message: Message,
-    state: FSMContext
-):
-
-    async with user_lock(message.from_user.id):
-
-        data = await state.get_data()
-
-        if not data.get("getfile_mode"):
-            return
-
-
-        code = (message.text or "").strip()
-
-
-        if not code:
-            return await message.answer(
-                "❌ CODE tidak boleh kosong."
-            )
-
-
-        # hapus pesan user
-        try:
-            await message.delete()
-        except:
-            pass
-
-
-        await open_file_by_code(
-            message,
-            code,
-            state
-        )
-
 
 
 # =====================================
@@ -395,72 +355,157 @@ async def open_file_by_code(
 
 
 # =====================================
-# AUTO DETECT CODE
+# RECEIVE CODE + AUTO DETECT
 # =====================================
 
-CODE_REGEX = re.compile(
-    r"\b[0-9aiueo]{40}\b",
-    re.IGNORECASE
-)
-
-
 @router.message(F.text)
-async def auto_get_file(
+async def receive_code(
     message: Message,
     state: FSMContext
 ):
 
-    text = message.text or ""
+    async with user_lock(message.from_user.id):
+
+        data = await state.get_data()
+
+        text = (message.text or "").strip()
 
 
-    match = CODE_REGEX.search(text)
+        # =================================
+        # GET FILE MODE
+        # =================================
+
+        if data.get("getfile_mode"):
+
+            match = CODE_REGEX.search(text)
+
+            if not match:
+                await state.clear()
+
+                try:
+                    await message.delete()
+                except:
+                    pass
+
+                return await message.answer(
+                    "❌ Itu bukan CODE bot saya.\n\n"
+                    "Silakan kirim kode file yang benar."
+                )
 
 
-    if not match:
+            code = match.group(0)
 
-        # kalau bukan kode bot
-        if "code" in text.lower():
 
-            return await message.answer(
-                "❌ Itu bukan CODE bot saya.\n\n"
-                "Silakan kirim kode file yang benar."
+            pool = await get_pool()
+
+
+            exists = await pool.fetchval(
+                """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM files
+                    WHERE LOWER(code)=LOWER($1)
+                )
+                """,
+                code
             )
 
-        return
+
+            # hapus kode user
+            try:
+                await message.delete()
+            except:
+                pass
+
+
+            # hapus pesan GET FILE MODE
+            progress_id = data.get(
+                "progress_msg_id"
+            )
+
+            if progress_id:
+
+                try:
+                    await message.bot.delete_message(
+                        chat_id=message.chat.id,
+                        message_id=progress_id
+                    )
+                except:
+                    pass
 
 
 
-    code = match.group(0)
+            if not exists:
+
+                await state.clear()
+
+                return await message.answer(
+                    "❌ CODE tidak ditemukan.\n\n"
+                    "Pastikan kode berasal dari bot ini."
+                )
 
 
-    pool = await get_pool()
+            await open_file_by_code(
+                message,
+                code,
+                state
+            )
+
+            return
 
 
-    exists = await pool.fetchval(
-        """
-        SELECT EXISTS(
-            SELECT 1
-            FROM files
-            WHERE LOWER(code)=LOWER($1)
+
+        # =================================
+        # AUTO DETECT NORMAL
+        # =================================
+
+
+        match = CODE_REGEX.search(text)
+
+
+        if not match:
+
+            if "code" in text.lower():
+
+                return await message.answer(
+                    "❌ Itu bukan CODE bot saya.\n\n"
+                    "Silakan kirim kode file yang benar."
+                )
+
+            return
+
+
+        code = match.group(0)
+
+
+        pool = await get_pool()
+
+
+        exists = await pool.fetchval(
+            """
+            SELECT EXISTS(
+                SELECT 1
+                FROM files
+                WHERE LOWER(code)=LOWER($1)
+            )
+            """,
+            code
         )
-        """,
-        code
-    )
 
 
-    if not exists:
+        if not exists:
 
-        return await message.answer(
-            "❌ CODE tidak ditemukan.\n\n"
-            "Pastikan kode berasal dari bot ini."
+            return await message.answer(
+                "❌ CODE tidak ditemukan.\n\n"
+                "Pastikan kode berasal dari bot ini."
+            )
+
+
+        await open_file_by_code(
+            message,
+            code,
+            state
         )
-
-
-    await open_file_by_code(
-        message,
-        code,
-        state
-    )
 
 # =====================================
 # CANCEL GET FILE
