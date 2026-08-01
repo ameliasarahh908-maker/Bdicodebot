@@ -608,13 +608,20 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
 
                 await conn.execute(
                     """
-                    INSERT INTO users(chat_id, username, full_name)
-                    VALUES($1,$2,$3)
-                    ON CONFLICT(chat_id)
+                    INSERT INTO public.users(
+                        user_id,
+                        chat_id,
+                        username,
+                        full_name
+                    )
+                    VALUES($1,$2,$3,$4)
+                    ON CONFLICT(user_id)
                     DO UPDATE SET
-                    username=EXCLUDED.username,
-                    full_name=EXCLUDED.full_name
+                        chat_id = EXCLUDED.chat_id,
+                        username = EXCLUDED.username,
+                        full_name = EXCLUDED.full_name
                     """,
+                    user_id,
                     user_id,
                     message.from_user.username,
                     message.from_user.full_name
