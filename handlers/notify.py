@@ -242,12 +242,10 @@ async def notify_text(
     return await message.answer(
         (
             "👋 <b>Halo!</b>\n\n"
-            "Saya belum memahami pesan tersebut.\n\n"
-            "🔑 Kirim CODE untuk membuka file.\n"
-            "📤 Kirim media untuk upload."
+            "Silakan tekan tombol <b>START</b> untuk membuka menu bot."
         ),
         parse_mode="HTML",
-        reply_markup=kb_upload()
+        reply_markup=kb_home()
     )
 
 
