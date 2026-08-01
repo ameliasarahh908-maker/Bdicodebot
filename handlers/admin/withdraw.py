@@ -30,7 +30,9 @@ async def admin_withdraw_action(call: CallbackQuery):
             show_alert=True
         )
 
+
     data = call.data.split(":")
+
 
     if len(data) < 3:
         return await call.answer(
@@ -38,14 +40,141 @@ async def admin_withdraw_action(call: CallbackQuery):
             show_alert=True
         )
 
-    action = data[1]
-    withdraw_id = int(data[2])
 
-    if action == "approve":
-        await approve_withdraw(call, withdraw_id)
+    action = data[1]
+
+
+    try:
+        withdraw_id = int(data[2])
+
+    except ValueError:
+        return await call.answer(
+            "ID withdraw tidak valid.",
+            show_alert=True
+        )
+
+
+    if action == "view":
+
+        await withdraw_detail(
+            call,
+            withdraw_id
+        )
+
+
+    elif action == "approve":
+
+        await approve_withdraw(
+            call,
+            withdraw_id
+        )
+
 
     elif action == "reject":
-        await reject_menu(call, withdraw_id)
+
+        await reject_menu(
+            call,
+            withdraw_id
+        )
+
+
+    else:
+
+        await call.answer(
+            "Aksi tidak dikenal.",
+            show_alert=True
+        )
+
+# =====================================================
+# WITHDRAW DETAIL
+# =====================================================
+
+async def withdraw_detail(
+    call: CallbackQuery,
+    withdraw_id: int
+):
+
+    pool = await get_pool()
+
+    withdraw = await pool.fetchrow(
+        """
+        SELECT
+            user_id,
+            method_name,
+            account_number,
+            account_name,
+            amount,
+            fee,
+            total_cut,
+            status
+
+        FROM withdraws
+
+        WHERE id=$1
+        """,
+        withdraw_id
+    )
+
+
+    if not withdraw:
+        return await call.answer(
+            "Withdraw tidak ditemukan.",
+            show_alert=True
+        )
+
+
+    kb = InlineKeyboardBuilder()
+
+
+    kb.button(
+        text="✅ APPROVE",
+        callback_data=f"admin_wd:approve:{withdraw_id}"
+    )
+
+
+    kb.button(
+        text="❌ REJECT",
+        callback_data=f"admin_wd:reject:{withdraw_id}"
+    )
+
+
+    kb.button(
+        text="🔙 Kembali",
+        callback_data="admin_withdraw"
+    )
+
+
+    kb.adjust(2,1)
+
+
+    await call.message.edit_text(
+
+        (
+            "🏧 <b>DETAIL WITHDRAW</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+
+            f"🆔 ID : <code>{withdraw_id}</code>\n"
+            f"👤 User ID : <code>{withdraw['user_id']}</code>\n\n"
+
+            "🏦 <b>Tujuan</b>\n"
+            f"• {withdraw['method_name']}\n"
+            f"• <code>{withdraw['account_number']}</code>\n"
+            f"• {withdraw['account_name']}\n\n"
+
+            "💰 <b>Nominal</b>\n"
+            f"• Request : {rupiah(withdraw['amount'])}\n"
+            f"• Fee : {rupiah(withdraw['fee'])}\n"
+            f"• Potong : {rupiah(withdraw['total_cut'])}\n\n"
+
+            f"📌 Status : {withdraw['status']}"
+        ),
+
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
+    )
+
+
+    await call.answer()
 
 
 # =====================================================
