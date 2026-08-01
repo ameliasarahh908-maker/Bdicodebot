@@ -10,6 +10,7 @@ async def payment_worker():
 
     logging.info("💳 Payment worker running...")
 
+
     while True:
 
         try:
@@ -20,7 +21,8 @@ async def payment_worker():
                     id,
                     user_id,
                     code,
-                    invoice_id
+                    invoice_id,
+                    seller_paid
                 FROM payments
                 WHERE status='paid'
                   AND type='file'
@@ -59,7 +61,7 @@ async def payment_worker():
 
 
                     # =========================
-                    # KIRIM FILE KE PEMBELI
+                    # KIRIM FILE PEMBELI
                     # =========================
 
                     sent = await send_page(
@@ -71,19 +73,27 @@ async def payment_worker():
                     )
 
 
-                    if sent:
+                    if not sent:
+                        continue
 
 
-                        # =========================
-                        # KOMISI SELLER 50%
-                        # =========================
+
+                    # =========================
+                    # KOMISI SELLER 50%
+                    # =========================
+
+                    if not p["seller_paid"]:
+
+                        seller_id = file["owner_id"]
+                        price = file["price"] or 0
 
                         seller_earn = int(
-                            file["price"] * 0.5
+                            price * 0.5
                         )
 
 
-                        if seller_earn > 0:
+                        if seller_id and seller_earn > 0:
+
 
                             await execute(
                                 """
@@ -94,46 +104,60 @@ async def payment_worker():
                                 WHERE user_id=$2
                                 """,
                                 seller_earn,
-                                file["owner_id"]
+                                seller_id
                             )
 
 
                             logging.info(
-                                "💰 Seller +%s user=%s",
+                                "💰 Seller mendapat Rp%s user=%s",
                                 seller_earn,
-                                file["owner_id"]
+                                seller_id
                             )
 
 
-
-                        # =========================
-                        # SELESAIKAN PAYMENT
-                        # =========================
 
                         await execute(
                             """
                             UPDATE payments
                             SET
-                                status='completed',
-                                updated_at=NOW()
+                                seller_paid=true
                             WHERE id=$1
                             """,
                             p["id"]
                         )
 
 
-                        logging.info(
-                            "✅ File sent %s",
-                            p["invoice_id"]
-                        )
+
+                    # =========================
+                    # PAYMENT SELESAI
+                    # =========================
+
+                    await execute(
+                        """
+                        UPDATE payments
+                        SET
+                            status='completed',
+                            updated_at=NOW()
+                        WHERE id=$1
+                        """,
+                        p["id"]
+                    )
+
+
+                    logging.info(
+                        "✅ File sent %s",
+                        p["invoice_id"]
+                    )
+
 
 
                 except Exception:
 
                     logging.exception(
-                        "❌ Failed send file %s",
+                        "❌ Failed payment %s",
                         p["invoice_id"]
                     )
+
 
 
         except Exception:
@@ -141,6 +165,7 @@ async def payment_worker():
             logging.exception(
                 "💥 PAYMENT WORKER ERROR"
             )
+
 
 
         await asyncio.sleep(15)
