@@ -46,7 +46,6 @@ dp.callback_query.middleware(
 # ROUTERS IMPORT
 # =========================
 
-from handlers.test import router as test_router
 from handlers.start import router as start_router
 from handlers.check_sub import router as check_sub_router
 
@@ -90,7 +89,6 @@ from handlers.marketplace import router as marketplace_router
 # =========================
 
 # BASIC
-dp.include_router(test_router)
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
 
