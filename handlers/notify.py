@@ -6,8 +6,10 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton
 )
+from aiogram.fsm.context import FSMContext
 
 from database import get_pool
+
 
 router = Router()
 
@@ -23,6 +25,7 @@ CODE_REGEX = re.compile(
 
 
 def normalize_code(code: str):
+
     return (
         code
         .strip()
@@ -32,11 +35,13 @@ def normalize_code(code: str):
     )
 
 
+
 # =====================================
 # KEYBOARD
 # =====================================
 
 def kb_open():
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -44,12 +49,20 @@ def kb_open():
                     text="📥 Buka File",
                     callback_data="getfile"
                 )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Menu Utama",
+                    callback_data="home"
+                )
             ]
         ]
     )
 
 
+
 def kb_upload():
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -57,12 +70,41 @@ def kb_upload():
                     text="📤 Upload File",
                     callback_data="upfile"
                 )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Menu Utama",
+                    callback_data="home"
+                )
             ]
         ]
     )
 
 
+
+def kb_channel():
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Channel",
+                    callback_data="channel"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏠 Menu Utama",
+                    callback_data="home"
+                )
+            ]
+        ]
+    )
+
+
+
 def kb_home():
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -75,18 +117,45 @@ def kb_home():
     )
 
 
+
 # =====================================
-# NOTIFY
+# TEXT NOTIFY
 # =====================================
 
-@router.message(F.text)
-async def notify_text(message: Message):
+@router.message(
+    F.text
+)
+async def notify_text(
+    message: Message,
+    state: FSMContext
+):
 
-    text = (message.text or "").strip()
 
-    # =====================================
-    # MENU CHANNEL
-    # =====================================
+    # jangan ganggu upload/payment FSM
+    if await state.get_state():
+        return
+
+
+
+    text = message.text.strip()
+
+
+    # =========================
+    # IGNORE COMMAND
+    # =========================
+
+    if text.startswith("/"):
+        return
+
+
+
+    lower = text.lower()
+
+
+
+    # =========================
+    # CHANNEL KEYWORD
+    # =========================
 
     keywords = {
         "group",
@@ -96,37 +165,37 @@ async def notify_text(message: Message):
         "info"
     }
 
-    if text.lower() in keywords:
+
+    if lower in keywords:
 
         return await message.answer(
             (
                 "📢 <b>MENU CHANNEL</b>\n\n"
-                "Silakan tekan tombol di bawah untuk membuka menu Channel."
+                "Silakan buka daftar channel informasi."
             ),
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="📢 Channel",
-                            callback_data="channel"
-                        )
-                    ]
-                ]
-            )
+            reply_markup=kb_channel()
         )
 
-    # =====================================
-    # DETECT CODE
-    # =====================================
+
+
+    # =========================
+    # CODE DETECT
+    # =========================
 
     match = CODE_REGEX.search(text)
 
+
     if match:
 
-        code = normalize_code(match.group(0))
+
+        code = normalize_code(
+            match.group(0)
+        )
+
 
         pool = await get_pool()
+
 
         exists = await pool.fetchval(
             """
@@ -139,45 +208,52 @@ async def notify_text(message: Message):
             code
         )
 
+
+
         if exists:
 
             return await message.answer(
                 (
                     "🔑 <b>CODE TERDETEKSI</b>\n\n"
-                    "Saya menemukan kode file yang valid.\n\n"
-                    "Tekan tombol di bawah untuk membuka file tersebut."
+                    "Kode file valid ditemukan.\n\n"
+                    "Tekan tombol untuk membuka file."
                 ),
                 parse_mode="HTML",
                 reply_markup=kb_open()
             )
 
+
+
         return await message.answer(
             (
                 "❌ <b>CODE TIDAK VALID</b>\n\n"
-                "Kode yang Anda kirim tidak ditemukan atau bukan berasal dari bot ini."
+                "Kode tidak ditemukan."
             ),
             parse_mode="HTML",
             reply_markup=kb_home()
         )
 
-    # =====================================
-    # BUKAN CODE
-    # =====================================
+
+
+    # =========================
+    # DEFAULT TEXT
+    # =========================
 
     return await message.answer(
         (
             "👋 <b>Halo!</b>\n\n"
-            "Saya tidak menemukan kode file pada pesan Anda.\n\n"
-            "• Jika ingin mengirim file, tekan <b>Upload File</b>.\n"
-            "• Jika sudah memiliki CODE, kirim CODE tersebut ke chat ini."
+            "Saya belum memahami pesan tersebut.\n\n"
+            "🔑 Kirim CODE untuk membuka file.\n"
+            "📤 Kirim media untuk upload."
         ),
         parse_mode="HTML",
         reply_markup=kb_upload()
     )
 
 
+
 # =====================================
-# DETECT MEDIA
+# MEDIA NOTIFY
 # =====================================
 
 @router.message(
@@ -189,38 +265,50 @@ async def notify_text(message: Message):
     | F.animation
     | F.sticker
 )
-async def notify_media(message: Message):
+async def notify_media(
+    message: Message,
+    state: FSMContext
+):
+
+
+    # jangan ganggu upload aktif
+    if await state.get_state():
+        return
+
+
 
     return await message.answer(
         (
             "📤 <b>MEDIA TERDETEKSI</b>\n\n"
-            "Saya mendeteksi Anda mengirim media.\n\n"
-            "Jika ingin menyimpan media ke bot, tekan tombol Upload File."
+            "Media ditemukan.\n\n"
+            "Tekan Upload File untuk menyimpan ke bot."
         ),
         parse_mode="HTML",
         reply_markup=kb_upload()
     )
 
-# =====================================
-# TEXT / COMMAND LAIN
-# =====================================
 
-@router.message(F.text.startswith("/"))
-async def ignore_command(message: Message):
-    return
 
+# =====================================
+# FALLBACK
+# =====================================
 
 @router.message()
-async def notify_other(message: Message):
+async def notify_other(
+    message: Message,
+    state: FSMContext
+):
+
+
+    if await state.get_state():
+        return
+
 
     return await message.answer(
         (
-            "🤔 <b>Saya tidak memahami pesan tersebut.</b>\n\n"
-            "📤 Kirim media untuk di-upload.\n"
-            "🔑 Kirim CODE untuk membuka file.\n\n"
-            "Atau tekan tombol di bawah untuk membuka menu utama."
+            "🤖 <b>BOT MARKET</b>\n\n"
+            "Gunakan menu yang tersedia."
         ),
         parse_mode="HTML",
         reply_markup=kb_home()
     )
-
