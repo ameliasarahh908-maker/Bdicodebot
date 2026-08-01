@@ -718,8 +718,57 @@ async def send_withdraw_channel(
         )
 
 
+        # =========================
+        # SENSOR DATA
+        # =========================
 
-        await call.bot.send_message(
+        account_number = withdraw["account_number"]
+
+        if account_number:
+
+            if len(account_number) > 6:
+
+                account_number = (
+                    account_number[:3]
+                    +
+                    "*" * (len(account_number)-6)
+                    +
+                    account_number[-3:]
+                )
+
+            else:
+
+                account_number = "***"
+
+
+
+        account_name = withdraw["account_name"]
+
+        if account_name:
+
+            name_parts = account_name.split()
+
+            if len(name_parts) > 1:
+
+                account_name = (
+                    name_parts[0]
+                    +
+                    " "
+                    +
+                    "***"
+                )
+
+            else:
+
+                account_name = "***"
+
+
+
+        # =========================
+        # KIRIM CHANNEL
+        # =========================
+
+        msg = await call.bot.send_message(
 
             chat_id=WITHDRAW_CHANNEL_ID,
 
@@ -733,8 +782,8 @@ async def send_withdraw_channel(
 
                 "🏦 <b>Tujuan</b>\n"
                 f"• {withdraw['method_name']}\n"
-                f"• <code>{withdraw['account_number']}</code>\n"
-                f"• {withdraw['account_name']}\n\n"
+                f"• <code>{account_number}</code>\n"
+                f"• {account_name}\n\n"
 
                 f"💰 Nominal : <b>{rupiah(amount)}</b>\n"
                 f"💸 Fee : <b>{rupiah(fee)}</b>\n"
@@ -750,11 +799,24 @@ async def send_withdraw_channel(
         )
 
 
-    except TelegramBadRequest:
 
-        logger.exception(
-            "FAILED SEND WITHDRAW CHANNEL"
+        # =========================
+        # SIMPAN MESSAGE ID
+        # =========================
+
+        await pool.execute(
+            """
+            UPDATE withdraws
+
+            SET channel_message_id=$1
+
+            WHERE id=$2
+            """,
+
+            msg.message_id,
+            withdraw_id
         )
+
 
 
     except Exception:
