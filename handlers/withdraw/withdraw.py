@@ -135,21 +135,17 @@ async def withdraw_create(call: CallbackQuery):
     pool = await get_pool()
 
 
+    # ambil ewallet/bank user
     account = await pool.fetchrow(
         """
         SELECT
-            uwa.id,
-            uwa.account_name,
-            uwa.account_number,
-            wm.name AS method_name
-        FROM user_withdraw_accounts uwa
-
-        JOIN withdraw_methods wm
-        ON wm.id = uwa.method_id
-
-        WHERE uwa.user_id=$1
-        AND uwa.is_default=true
-
+            id,
+            method_name,
+            account_number,
+            account_name
+        FROM user_payment_methods
+        WHERE user_id=$1
+        ORDER BY id
         LIMIT 1
         """,
         call.from_user.id
@@ -161,8 +157,8 @@ async def withdraw_create(call: CallbackQuery):
         kb = InlineKeyboardBuilder()
 
         kb.button(
-            text="➕ Tambah Rekening",
-            callback_data="withdraw_account"
+            text="➕ Tambah Rekening / E-Wallet",
+            callback_data="ewallet"
         )
 
         kb.button(
@@ -176,18 +172,20 @@ async def withdraw_create(call: CallbackQuery):
         return await call.message.edit_text(
             (
                 "❌ <b>Rekening belum ada</b>\n\n"
-                "Tambahkan rekening / e-wallet terlebih dahulu."
+                "Silakan simpan rekening atau e-wallet terlebih dahulu."
             ),
             parse_mode="HTML",
             reply_markup=kb.as_markup()
         )
 
 
+
+    # cek saldo
     balance = await pool.fetchval(
         """
         SELECT balance
         FROM users
-        WHERE telegram_id=$1
+        WHERE user_id=$1
         """,
         call.from_user.id
     ) or 0
@@ -214,6 +212,7 @@ async def withdraw_create(call: CallbackQuery):
     kb.adjust(2)
 
 
+
     await call.message.edit_text(
 
         (
@@ -222,9 +221,10 @@ async def withdraw_create(call: CallbackQuery):
 
             f"💰 Saldo : <b>{rupiah(balance)}</b>\n\n"
 
-            f"🏦 {account['method_name']}\n"
-            f"👤 {account['account_name']}\n"
-            f"💳 <code>{account['account_number']}</code>\n\n"
+            "🏦 <b>Tujuan:</b>\n"
+            f"• {account['method_name']}\n"
+            f"• {account['account_name']}\n"
+            f"• <code>{account['account_number']}</code>\n\n"
 
             f"💸 Fee : {rupiah(WITHDRAW_FEE)}\n\n"
 
