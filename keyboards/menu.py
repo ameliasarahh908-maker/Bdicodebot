@@ -22,7 +22,7 @@ def home_kb(user_id: int):
 
             [
                 InlineKeyboardButton(
-                    text="📦 My Code",
+                    text="📦 Code",
                     callback_data="code"
                 ),
                 InlineKeyboardButton(
