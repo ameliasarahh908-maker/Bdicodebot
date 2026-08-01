@@ -73,7 +73,7 @@ async def admin_withdraw_action(
 # =====================================================
 
 async def approve_withdraw(
-    call,
+    call: CallbackQuery,
     withdraw_id: int
 ):
 
@@ -84,13 +84,13 @@ async def approve_withdraw(
 
         async with conn.transaction():
 
-
             withdraw = await conn.fetchrow(
                 """
                 SELECT
                     user_id,
                     amount,
                     fee,
+                    receive_amount,
                     channel_message_id
 
                 FROM withdraws
@@ -114,7 +114,6 @@ async def approve_withdraw(
                     "Withdraw sudah diproses.",
                     show_alert=True
                 )
-
 
 
             await conn.execute(
@@ -156,6 +155,9 @@ async def approve_withdraw(
                     f"💰 Nominal : "
                     f"<b>{rupiah(withdraw['amount'])}</b>\n\n"
 
+                    f"📤 Diterima : "
+                    f"<b>{rupiah(withdraw['receive_amount'])}</b>\n\n"
+
                     "📌 Status : ✅ SUCCESS\n\n"
 
                     "Dana telah berhasil dikirim."
@@ -194,7 +196,10 @@ async def approve_withdraw(
                 f"💰 Nominal : "
                 f"<b>{rupiah(withdraw['amount'])}</b>\n\n"
 
-                "Dana telah berhasil dikirim ke rekening tujuan."
+                f"📤 Diterima : "
+                f"<b>{rupiah(withdraw['receive_amount'])}</b>\n\n"
+
+                "Dana telah berhasil dikirim."
             ),
 
             parse_mode="HTML"
@@ -211,7 +216,7 @@ async def approve_withdraw(
 
 
     # =====================================================
-    # HAPUS TOMBOL ADMIN
+    # HAPUS BUTTON ADMIN
     # =====================================================
 
     try:
@@ -220,11 +225,9 @@ async def approve_withdraw(
             reply_markup=None
         )
 
-
     except Exception:
 
         pass
-
 
 # =====================================================
 # REJECT MENU
@@ -343,7 +346,7 @@ async def process_reject(
 
 
 
-            total = (
+            total_refund = (
                 withdraw["amount"]
                 +
                 withdraw["fee"]
@@ -352,7 +355,7 @@ async def process_reject(
 
 
             # =============================
-            # KEMBALIKAN SALDO
+            # REFUND SALDO
             # =============================
 
             await conn.execute(
@@ -363,7 +366,8 @@ async def process_reject(
 
                 WHERE telegram_id=$2
                 """,
-                total,
+
+                total_refund,
                 withdraw["user_id"]
             )
 
@@ -395,14 +399,14 @@ async def process_reject(
                 """,
 
                 withdraw["user_id"],
-                total,
+                total_refund,
                 f"Refund Withdraw #{withdraw_id}"
             )
 
 
 
             # =============================
-            # UPDATE STATUS
+            # UPDATE WITHDRAW
             # =============================
 
             await conn.execute(
@@ -449,8 +453,8 @@ async def process_reject(
 
                     f"📌 Alasan : <b>{reason}</b>\n\n"
 
-                    "💰 Saldo telah dikembalikan."
-
+                    f"💰 Refund : "
+                    f"<b>{rupiah(total_refund)}</b>"
                 ),
 
                 parse_mode="HTML"
@@ -486,8 +490,7 @@ async def process_reject(
                 f"📌 Alasan : <b>{reason}</b>\n\n"
 
                 f"💰 Saldo dikembalikan : "
-                f"<b>{rupiah(total)}</b>"
-
+                f"<b>{rupiah(total_refund)}</b>"
             ),
 
             parse_mode="HTML"
@@ -504,7 +507,7 @@ async def process_reject(
 
 
     # =====================================================
-    # HAPUS TOMBOL ADMIN
+    # HAPUS BUTTON ADMIN
     # =====================================================
 
     try:
@@ -512,7 +515,6 @@ async def process_reject(
         await call.message.edit_reply_markup(
             reply_markup=None
         )
-
 
     except Exception:
 
