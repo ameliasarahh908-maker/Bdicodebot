@@ -38,7 +38,7 @@ async def home_kb(user_id: int):
                 ),
                 InlineKeyboardButton(
                     text="📢 Info Channel",
-                    callback_data="channel_info"
+                    callback_data="channel"
                 )
             ],
 
