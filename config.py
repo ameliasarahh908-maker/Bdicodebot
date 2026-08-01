@@ -47,10 +47,7 @@ NOTIF_CHANNEL_ID = -1004413314849
 # WITHDRAW
 # =========================
 WITHDRAW_CHANNEL_ID = int(
-    os.getenv(
-        "WITHDRAW_CHANNEL_ID",
-        str(CHANNEL_ID)
-    )
+    os.getenv("WITHDRAW_CHANNEL_ID", "-1004413314849")
 )
 
 # =========================
@@ -91,4 +88,9 @@ if not STORAGE_CHANNEL_ID:
 if not BAYARGG_API_KEY:
     raise ValueError(
         "BAYARGG_API_KEY belum di-set"
+    )
+
+if not WITHDRAW_CHANNEL_ID:
+    raise ValueError(
+        "WITHDRAW_CHANNEL_ID belum di-set"
     )
