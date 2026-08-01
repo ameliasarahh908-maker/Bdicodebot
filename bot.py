@@ -70,6 +70,7 @@ from handlers.help import router as help_router
 from handlers.market_detail import router as market_detail_router
 from handlers.myfile import router as myfile_router
 from handlers.delete_file import router as delete_file_router
+from handlers.edit_price import router as edit_price_router
 
 from handlers.pay import router as pay_router
 from handlers.cancel import router as cancel_router
@@ -117,6 +118,7 @@ dp.include_router(help_router)
 dp.include_router(market_detail_router)
 dp.include_router(myfile_router)
 dp.include_router(delete_file_router)
+dp.include_router(edit_price_router)
 
 # PAYMENT
 dp.include_router(pay_router)
