@@ -63,6 +63,7 @@ from handlers.price_code import router as price_router
 from handlers.new_code import router as new_code_router
 from handlers.category_code import router as category_router
 
+from handlers.channel import router as channel_router
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
 from handlers.help import router as help_router
@@ -99,6 +100,7 @@ dp.include_router(top_router)
 dp.include_router(code_router)
 
 # SEARCH
+dp.include_router(channel_router)
 dp.include_router(search_router)
 dp.include_router(price_router)
 dp.include_router(category_router)
