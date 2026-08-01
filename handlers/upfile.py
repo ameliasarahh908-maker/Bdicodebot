@@ -135,25 +135,43 @@ class UploadState(StatesGroup):
 # START UPLOAD BUTTON
 # ==========================================
 
-@router.callback_query(F.data=="upfile")
+@router.callback_query(F.data == "upfile")
 async def start_upload(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
-    if not await check_force_sub(
-        call.bot,
-        call.from_user.id
-    ):
+    if not await check_force_sub(call.bot, call.from_user.id):
         return await call.message.answer(
             "❌ Kamu belum join channel.",
             reply_markup=join_kb()
         )
 
     await state.clear()
+    await state.set_state(UploadState.upload)
 
-    await state.set_state(
-        UploadState.upload
+    text = (
+        "📦 <b>UPLOAD MODE</b>\n\n"
+        "Silakan kirim file.\n"
+        f"Maksimal {MAX_MEDIA} media.\n\n"
+        "Jika selesai tekan STOP & SAVE."
     )
+
+    try:
+        await call.message.edit_text(
+            text,
+            parse_mode="HTML"
+        )
+
+        progress_id = call.message.message_id
+
+    except Exception:
+
+        msg = await call.message.answer(
+            text,
+            parse_mode="HTML"
+        )
+
+        progress_id = msg.message_id
 
     await state.update_data(
         upload_mode=True,
@@ -164,25 +182,8 @@ async def start_upload(call: CallbackQuery, state: FSMContext):
         price=0,
         payment_provider=None,
         saving=False,
-        progress_msg_id=None
+        progress_msg_id=progress_id
     )
-
-    try:
-        await call.message.edit_text(
-            "📦 <b>UPLOAD MODE</b>\n\n"
-            "Silakan kirim file.\n"
-            f"Maksimal {MAX_MEDIA} media.\n\n"
-            "Jika selesai tekan STOP & SAVE.",
-            parse_mode="HTML"
-        )
-    except:
-        await call.message.answer(
-            "📦 <b>UPLOAD MODE</b>\n\n"
-            "Silakan kirim file.\n"
-            f"Maksimal {MAX_MEDIA} media.\n\n"
-            "Jika selesai tekan STOP & SAVE.",
-            parse_mode="HTML"
-        )
 
 
 import random
@@ -207,114 +208,78 @@ async def generate_code():
 # ==========================================
 
 @router.message(F.document | F.video | F.photo)
-async def receive_media(message: Message,state: FSMContext):
+async def receive_media(message: Message, state: FSMContext):
 
-    user_id=message.from_user.id
+    user_id = message.from_user.id
 
     async with user_lock(user_id):
 
-        data=await state.get_data()
+        data = await state.get_data()
 
+        # Upload hanya jika user sudah menekan tombol Upload
         if not data.get("upload_mode"):
-
-            if not await check_force_sub(message.bot,user_id):
-                return await message.answer(
-                    "❌ Kamu belum join channel.",
-                    reply_markup=join_kb()
-                )
-
-            progress=await message.answer(
-                "📦 <b>UPLOAD MODE</b>\n\n"
-                "Silakan kirim file.\n"
-                f"Maksimal {MAX_MEDIA} media.\n\n"
-                "Jika selesai tekan STOP & SAVE.",
-                parse_mode="HTML"
-            )
-
-            await state.clear()
-            await state.set_state(UploadState.upload)
-
-            await state.update_data(
-                upload_mode=True,
-                media=[],
-                title=None,
-                share_media=True,
-                is_paid=False,
-                price=0,
-                payment_provider=None,
-                progress_msg_id=progress.message_id,
-                saving=False
-            )
-
             return
 
+        media = data.get("media", [])
 
-        media=data.get("media",[])
-
-        if len(media)>=MAX_MEDIA:
+        if len(media) >= MAX_MEDIA:
             return await message.answer(
                 f"❌ Maksimal {MAX_MEDIA} media."
             )
 
-
         try:
-            copied=await copy_to_storage(
+            copied = await copy_to_storage(
                 message.bot,
                 message.chat.id,
                 message.message_id
             )
-
-            storage_id=copied.message_id
+            storage_id = copied.message_id
 
         except Exception:
             return await message.answer(
                 "⚠️ Gagal menyimpan ke storage."
             )
 
-
         if message.document:
-            file_type="document"
-            file_id=message.document.file_id
-            file_name=message.document.file_name
-            file_size=message.document.file_size or 0
+            file_type = "document"
+            file_id = message.document.file_id
+            file_name = message.document.file_name
+            file_size = message.document.file_size or 0
 
         elif message.video:
-            file_type="video"
-            file_id=message.video.file_id
-            file_name=getattr(message.video,"file_name",None)
-            file_size=message.video.file_size or 0
+            file_type = "video"
+            file_id = message.video.file_id
+            file_name = getattr(message.video, "file_name", None)
+            file_size = message.video.file_size or 0
 
         else:
-            file_type="photo"
-            file_id=message.photo[-1].file_id
-            file_name=None
-            file_size=message.photo[-1].file_size or 0
+            file_type = "photo"
+            file_id = message.photo[-1].file_id
+            file_name = None
+            file_size = message.photo[-1].file_size or 0
 
+        if any(x["file_id"] == file_id for x in media):
+            try:
+                await message.delete()
+            except Exception:
+                pass
 
-        if any(x["file_id"]==file_id for x in media):
-            return
-
+            return await message.answer(
+                "⚠️ File tersebut sudah ditambahkan."
+            )
 
         media.append({
-            "message_id":storage_id,
-            "file_id":file_id,
-            "type":file_type,
-            "file_name":file_name,
-            "file_size":file_size,
-            "position":len(media)+1
+            "message_id": storage_id,
+            "file_id": file_id,
+            "type": file_type,
+            "file_name": file_name,
+            "file_size": file_size,
+            "position": len(media) + 1
         })
-
 
         await state.update_data(media=media)
 
-
-        try:
-            await message.delete()
-        except:
-            pass
-
-
-        kb=InlineKeyboardBuilder()
+        kb = InlineKeyboardBuilder()
 
         kb.button(
             text="⏹ STOP & SAVE",
@@ -328,8 +293,7 @@ async def receive_media(message: Message,state: FSMContext):
 
         kb.adjust(1)
 
-
-        progress_id=data.get("progress_msg_id")
+        progress_id = data.get("progress_msg_id")
 
         if progress_id:
             await safe_update(
@@ -343,6 +307,11 @@ async def receive_media(message: Message,state: FSMContext):
                 ),
                 kb.as_markup()
             )
+
+        try:
+            await message.delete()
+        except Exception:
+            pass
 
 
 @router.callback_query(F.data=="cancel_upfile")
@@ -704,6 +673,17 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                         """,
                         values
                     )
+
+        progress_id = data.get("progress_msg_id")
+
+        if progress_id:
+            try:
+                await message.bot.delete_message(
+                    message.chat.id,
+                    progress_id
+                )
+            except Exception:
+                pass
 
         await state.clear()
 
