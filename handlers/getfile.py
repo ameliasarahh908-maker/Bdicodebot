@@ -115,80 +115,54 @@ async def safe_update(
 # BUTTON GET FILE
 # =====================================
 
-@router.callback_query(F.data=="getfile")
+@router.callback_query(F.data == "getfile")
 async def getfile_start(
-    call:CallbackQuery,
-    state:FSMContext
+    call: CallbackQuery,
+    state: FSMContext
 ):
-
     await call.answer()
-
 
     async with user_lock(call.from_user.id):
 
         await state.clear()
-
-
-        await state.set_state(
-            GetFileState.waiting_code
-        )
-
+        await state.set_state(GetFileState.waiting_code)
 
         text = (
             "📥 <b>GET FILE MODE</b>\n\n"
-            "Silakan kirim CODE file sekarang."
+            "Silakan kirim <b>CODE</b> file sekarang."
         )
 
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🏠 Home",
+                        callback_data="home"
+                    )
+                ]
+            ]
+        )
 
         try:
-
             await call.message.edit_text(
-                text,
+                text=text,
                 parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🏠 Home",
-                                callback_data="home"
-                            )
-                        ]
-                    ]
-                )
+                reply_markup=keyboard
             )
-
             progress_id = call.message.message_id
 
-
-        except Exception:
-
-
+        except TelegramBadRequest:
             msg = await call.message.answer(
-                text,
+                text=text,
                 parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🏠 Home",
-                                callback_data="home"
-                            )
-                        ]
-                    ]
-                )
+                reply_markup=keyboard
             )
-
-
             progress_id = msg.message_id
-
-
 
         await state.update_data(
             getfile_mode=True,
             progress_msg_id=progress_id
         )
-
-
 
 # =====================================
 # OPEN FILE
@@ -199,78 +173,59 @@ async def open_file_by_code(
     code: str,
     state: FSMContext
 ):
-
     pool = await get_pool()
-
 
     file = await pool.fetchrow(
         """
-        SELECT *
+        SELECT
+            code,
+            title,
+            media,
+            owner_id,
+            expires_at,
+            is_paid,
+            price
         FROM files
-        WHERE LOWER(TRIM(code))=LOWER(TRIM($1))
+        WHERE LOWER(TRIM(code)) = LOWER(TRIM($1))
         LIMIT 1
         """,
         code
     )
 
-
     if not file:
-
         await state.clear()
-
         return await message.answer(
             "❌ File tidak ditemukan."
         )
 
-
-    media = safe_json(
-        file["media"]
-    )
-
+    media = safe_json(file["media"])
 
     if not media:
-
         await state.clear()
-
         return await message.answer(
             "❌ File kosong."
         )
 
+    if (
+        file["expires_at"]
+        and file["expires_at"].timestamp() < time.time()
+    ):
+        await state.clear()
+        return await message.answer(
+            "❌ File sudah kadaluarsa."
+        )
 
+    owner = (
+        message.from_user.id == file["owner_id"]
+    )
 
-    expires_at = file["expires_at"]
-
-
-    if expires_at:
-
-        if expires_at.timestamp() < time.time():
-
-            await state.clear()
-
-            return await message.answer(
-                "❌ File sudah kadaluarsa."
-            )
-
-
+    is_paid = bool(file["is_paid"])
+    price = file["price"] or 0
 
     user_level = await get_user_status(
         pool,
         message.from_user.id
     )
-
-
-    is_paid = file["is_paid"] or False
-
-    price = file["price"] or 0
-
-
-
-    owner = (
-        message.from_user.id ==
-        file["owner_id"]
-    )
-
-
 
     access = await pool.fetchval(
         """
@@ -278,36 +233,29 @@ async def open_file_by_code(
             SELECT 1
             FROM file_purchases
             WHERE user_id=$1
-            AND file_code=$2
-            AND status='paid'
+              AND file_code=$2
+              AND status='paid'
         )
         """,
         message.from_user.id,
         code
     )
 
-
-
     has_access = (
         owner
         or access
-        or user_level=="vip"
-        or user_level=="vvip"
+        or user_level in ("vip", "vvip")
     )
 
-
+    await state.clear()
 
     if is_paid and not has_access:
-
-
-        await state.clear()
-
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=f"💳 BAYAR Rp {price:,.0f}".replace(",","."),
+                        text=f"💳 BAYAR Rp {price:,.0f}".replace(",", "."),
                         callback_data=f"pay:{code}"
                     )
                 ],
@@ -320,27 +268,18 @@ async def open_file_by_code(
             ]
         )
 
-
         return await message.answer(
             (
                 "🔒 <b>FILE BERBAYAR</b>\n\n"
                 f"🔑 CODE : <code>{code}</code>\n"
                 f"💰 Harga : Rp {price:,}\n\n"
-                "Silakan lakukan pembayaran "
-                "untuk membuka file."
-            ).replace(",","."),
+                "Silakan lakukan pembayaran untuk membuka file."
+            ).replace(",", "."),
             parse_mode="HTML",
             reply_markup=keyboard
         )
 
-
-
-    await state.clear()
-
-
-
     from handlers.open_menu import open_keyboard
-
 
     return await message.answer(
         (
@@ -359,21 +298,18 @@ async def open_file_by_code(
 # =====================================
 
 CODE_REGEX = re.compile(
-    r"[a-z0-9]{30,60}",
+    r"\b[a-z0-9]{40}\b",
     re.IGNORECASE
 )
 
 
 def normalize_code(code: str):
-
     return (
-        code
-        .strip()
+        code.strip()
         .replace(" ", "")
         .replace("\n", "")
         .lower()
     )
-
 
 
 @router.message(F.text)
@@ -385,10 +321,9 @@ async def receive_code(
     async with user_lock(message.from_user.id):
 
         data = await state.get_data()
-
         text = (message.text or "").strip()
 
-
+        match = CODE_REGEX.search(text)
 
         # =================================
         # GET FILE MODE
@@ -396,126 +331,54 @@ async def receive_code(
 
         if data.get("getfile_mode"):
 
-
-            match = CODE_REGEX.search(text)
-
-
             if not match:
 
                 try:
                     await message.delete()
-                except:
+                except Exception:
                     pass
-
 
                 await state.clear()
 
-
                 return await message.answer(
                     "❌ Itu bukan CODE bot saya.\n\n"
-                    "Silakan kirim kode file yang benar."
+                    "Silakan kirim CODE yang benar."
                 )
 
+            code = normalize_code(match.group())
 
-            code = normalize_code(
-                match.group(0)
-            )
-
-
-            pool = await get_pool()
-
-
-            exists = await pool.fetchval(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                    FROM files
-                    WHERE LOWER(TRIM(code))=$1
-                )
-                """,
-                code
-            )
-
-
-
-            # hapus kode user
             try:
                 await message.delete()
-            except:
+            except Exception:
                 pass
 
-
-
-            # hapus pesan GET FILE MODE
-
-            progress_id = data.get(
-                "progress_msg_id"
-            )
-
+            progress_id = data.get("progress_msg_id")
 
             if progress_id:
-
                 try:
-
                     await message.bot.delete_message(
                         chat_id=message.chat.id,
                         message_id=progress_id
                     )
-
-                except:
+                except Exception:
                     pass
 
-
-
-            if not exists:
-
-                await state.clear()
-
-                return await message.answer(
-                    "❌ CODE tidak ditemukan.\n\n"
-                    "Pastikan kode berasal dari bot ini."
-                )
-
-
-
-            await open_file_by_code(
+            return await open_file_by_code(
                 message,
                 code,
                 state
             )
 
-            return
-
-
-
-
         # =================================
-        # AUTO DETECT NORMAL
+        # AUTO DETECT
         # =================================
-
-
-        match = CODE_REGEX.search(text)
-
 
         if not match:
-
-            if "code" in text.lower():
-
-                return await message.answer(
-                    "❌ Itu bukan CODE bot saya.\n\n"
-                    "Silakan kirim kode file yang benar."
-                )
-
             return
 
+        code = normalize_code(match.group())
 
-
-        code = normalize_code(
-            match.group(0)
-        )
-
-
-        await open_file_by_code(
+        return await open_file_by_code(
             message,
             code,
             state
