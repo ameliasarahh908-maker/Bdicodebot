@@ -23,6 +23,26 @@ router = Router()
 
 logger = logging.getLogger(__name__)
 
+def mask_name(name):
+
+    if not name:
+        return "-"
+
+    name = str(name)
+
+    if len(name) <= 3:
+        return "***"
+
+    return name[:2] + "*" * (len(name)-4) + name[-2:]
+
+def mask_id(uid):
+    uid = str(uid)
+
+    if len(uid) <= 4:
+        return "***"
+
+    return uid[:2] + "*" * (len(uid)-4) + uid[-2:]
+
 
 # =====================================================
 # WITHDRAW REGULER CONFIRM
@@ -71,7 +91,7 @@ async def withdraw_confirm(call: CallbackQuery):
                     """
                     SELECT balance
                     FROM users
-                    WHERE telegram_id=$1
+                    WHERE user_id=$1
                     FOR UPDATE
                     """,
                     call.from_user.id
@@ -109,7 +129,10 @@ async def withdraw_confirm(call: CallbackQuery):
                     SELECT id
                     FROM withdraws
                     WHERE user_id=$1
-                    AND status='pending'
+                    AND status IN(
+                        'pending',
+                        'instant_pending'
+                    )
                     LIMIT 1
                     """,
                     call.from_user.id
@@ -167,7 +190,7 @@ async def withdraw_confirm(call: CallbackQuery):
 
                     SET balance = balance - $1
 
-                    WHERE telegram_id=$2
+                    WHERE user_id=$2
                     """,
                     total_cut,
                     call.from_user.id
@@ -332,7 +355,7 @@ async def withdraw_instant_confirm(call: CallbackQuery):
                     """
                     SELECT balance
                     FROM users
-                    WHERE telegram_id=$1
+                    WHERE user_id=$1
                     FOR UPDATE
                     """,
                     call.from_user.id
@@ -433,7 +456,7 @@ async def withdraw_instant_confirm(call: CallbackQuery):
                     """
                     UPDATE users
                     SET balance = balance - $1
-                    WHERE telegram_id=$2
+                    WHERE user_id=$2
                     """,
                     total_cut,
                     call.from_user.id
@@ -778,17 +801,13 @@ async def send_withdraw_channel(
                 "━━━━━━━━━━━━━━\n\n"
 
                 f"🆔 ID : <code>{withdraw_id}</code>\n"
-                f"👤 User ID : <code>{call.from_user.id}</code>\n\n"
+                f"👤 User ID : <code>{mask_id(call.from_user.id)}</code>\n"
 
                 "🏦 <b>Tujuan</b>\n"
                 f"• {withdraw['method_name']}\n"
                 f"• <code>{account_number}</code>\n"
                 f"• {account_name}\n\n"
-
                 f"💰 Nominal : <b>{rupiah(amount)}</b>\n"
-                f"💸 Fee : <b>{rupiah(fee)}</b>\n"
-                f"📉 Total Potong : <b>{rupiah(withdraw['total_cut'])}</b>\n\n"
-
                 f"📌 Status : <b>{status_text}</b>\n\n"
 
                 "⏳ Menunggu proses admin."
