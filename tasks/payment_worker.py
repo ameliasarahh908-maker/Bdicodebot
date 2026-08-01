@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from database import fetch, execute
+from database import fetch, fetchrow, execute
 from bot import bot
 from handlers.page import send_page
 
@@ -14,7 +14,6 @@ async def payment_worker():
 
         try:
 
-            # cari payment pending yang belum diproses
             payments = await fetch(
                 """
                 SELECT
@@ -34,7 +33,35 @@ async def payment_worker():
 
                 try:
 
-                    # kirim file otomatis
+                    file = await fetchrow(
+                        """
+                        SELECT
+                            owner_id,
+                            price
+                        FROM files
+                        WHERE LOWER(TRIM(code)) =
+                              LOWER(TRIM($1))
+                        LIMIT 1
+                        """,
+                        p["code"]
+                    )
+
+
+                    if not file:
+
+                        logging.warning(
+                            "File tidak ditemukan %s",
+                            p["code"]
+                        )
+
+                        continue
+
+
+
+                    # =========================
+                    # KIRIM FILE KE PEMBELI
+                    # =========================
+
                     sent = await send_page(
                         bot=bot,
                         chat_id=p["user_id"],
@@ -45,6 +72,43 @@ async def payment_worker():
 
 
                     if sent:
+
+
+                        # =========================
+                        # KOMISI SELLER 50%
+                        # =========================
+
+                        seller_earn = int(
+                            file["price"] * 0.5
+                        )
+
+
+                        if seller_earn > 0:
+
+                            await execute(
+                                """
+                                UPDATE users
+                                SET
+                                    balance = balance + $1,
+                                    total_earn = total_earn + $1
+                                WHERE user_id=$2
+                                """,
+                                seller_earn,
+                                file["owner_id"]
+                            )
+
+
+                            logging.info(
+                                "💰 Seller +%s user=%s",
+                                seller_earn,
+                                file["owner_id"]
+                            )
+
+
+
+                        # =========================
+                        # SELESAIKAN PAYMENT
+                        # =========================
 
                         await execute(
                             """
