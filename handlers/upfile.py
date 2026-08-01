@@ -473,8 +473,8 @@ async def input_title(message:Message,state:FSMContext):
         )
 
 
-@router.callback_query(F.data=="file_free")
-async def file_free(call:CallbackQuery,state:FSMContext):
+@router.callback_query(F.data == "file_free")
+async def file_free(call: CallbackQuery, state: FSMContext):
 
     await call.answer()
 
@@ -483,7 +483,8 @@ async def file_free(call:CallbackQuery,state:FSMContext):
         await state.update_data(
             is_paid=False,
             price=0,
-            payment_provider=None
+            payment_provider=None,
+            saving_msg_id=call.message.message_id
         )
 
         try:
@@ -517,20 +518,20 @@ async def file_paid(call:CallbackQuery,state:FSMContext):
     )
 
 @router.message(UploadState.wait_price)
-async def input_price(message:Message,state:FSMContext):
+async def input_price(message: Message, state: FSMContext):
 
     async with user_lock(message.from_user.id):
 
-        text=(message.text or "").replace(".","").replace(",","").strip()
+        text = (message.text or "").replace(".", "").replace(",", "").strip()
 
         if not text.isdigit():
             return await message.answer(
                 "❌ Harga harus berupa angka."
             )
 
-        price=int(text)
+        price = int(text)
 
-        if price<1000:
+        if price < 1000:
             return await message.answer(
                 "❌ Harga minimal Rp1.000."
             )
@@ -541,12 +542,16 @@ async def input_price(message:Message,state:FSMContext):
             payment_provider="bayargg"
         )
 
-        await message.answer(
+        saving_msg = await message.answer(
             (
                 "⏳ <b>Menyimpan file...</b>\n\n"
                 f"💰 Harga : Rp{price:,}"
-            ).replace(",","."),
+            ).replace(",", "."),
             parse_mode="HTML"
+        )
+
+        await state.update_data(
+            saving_msg_id=saving_msg.message_id
         )
 
         await finalize_save(
@@ -688,6 +693,17 @@ async def finalize_save(message: Message, state: FSMContext, user_id: int):
                 await message.bot.delete_message(
                     message.chat.id,
                     progress_id
+                )
+            except Exception:
+                pass
+
+        saving_msg_id = data.get("saving_msg_id")
+
+        if saving_msg_id:
+            try:
+                await message.bot.delete_message(
+                    message.chat.id,
+                    saving_msg_id
                 )
             except Exception:
                 pass
