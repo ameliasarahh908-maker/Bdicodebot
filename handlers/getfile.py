@@ -299,7 +299,7 @@ async def open_file_by_code(
 # =====================================
 
 CODE_REGEX = re.compile(
-    r"\b[a-z0-9]{40}\b",
+    r"\b[a-z0-9]{30,60}\b",
     re.IGNORECASE
 )
 
@@ -335,11 +335,10 @@ async def receive_code(
             except Exception:
                 pass
 
-            await state.clear()
-
+            # JANGAN clear state
             return await message.answer(
                 "❌ Itu bukan CODE bot saya.\n\n"
-                "Silakan kirim CODE yang benar."
+                "Silakan kirim CODE yang benar atau tekan Cancel."
             )
 
         code = normalize_code(match.group())
@@ -363,9 +362,9 @@ async def receive_code(
                 pass
 
         return await open_file_by_code(
-            message,
-            code,
-            state
+            message=message,
+            code=code,
+            state=state
         )
 
 # =====================================
