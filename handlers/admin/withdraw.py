@@ -21,19 +21,14 @@ logger = logging.getLogger(__name__)
 # ADMIN BUTTON
 # =====================================================
 
-@router.callback_query(
-    F.data.startswith("admin_wd:")
-)
-async def admin_withdraw_action(
-    call: CallbackQuery
-):
+@router.callback_query(F.data.startswith("admin_wd:"))
+async def admin_withdraw_action(call: CallbackQuery):
 
     if call.from_user.id not in ADMIN_IDS:
         return await call.answer(
             "Tidak memiliki akses.",
             show_alert=True
         )
-
 
     data = call.data.split(":")
 
@@ -43,33 +38,18 @@ async def admin_withdraw_action(
             show_alert=True
         )
 
-
     action = data[1]
     withdraw_id = int(data[2])
 
-
     if action == "approve":
-
-        await approve_withdraw(
-            call,
-            withdraw_id
-        )
-
+        await approve_withdraw(call, withdraw_id)
 
     elif action == "reject":
-
-        await reject_menu(
-            call,
-            withdraw_id
-        )
-
-
-    await call.answer()
-
+        await reject_menu(call, withdraw_id)
 
 
 # =====================================================
-# APPROVE
+# APPROVE WITHDRAW
 # =====================================================
 
 async def approve_withdraw(
@@ -79,9 +59,7 @@ async def approve_withdraw(
 
     pool = await get_pool()
 
-
     async with pool.acquire() as conn:
-
         async with conn.transaction():
 
             withdraw = await conn.fetchrow(
@@ -107,14 +85,16 @@ async def approve_withdraw(
                 withdraw_id
             )
 
-
             if not withdraw:
-
                 return await call.answer(
                     "Withdraw sudah diproses.",
                     show_alert=True
                 )
 
+            receive = withdraw["receive_amount"]
+
+            if receive is None:
+                receive = withdraw["amount"] - withdraw["fee"]
 
             await conn.execute(
                 """
@@ -130,94 +110,70 @@ async def approve_withdraw(
             )
 
 
-
-    # =====================================================
     # UPDATE CHANNEL
-    # =====================================================
 
     if withdraw["channel_message_id"]:
 
         try:
-
             await call.bot.edit_message_text(
-
                 chat_id=WITHDRAW_CHANNEL_ID,
-
                 message_id=withdraw["channel_message_id"],
 
                 text=(
-
                     "✅ <b>WITHDRAW BERHASIL</b>\n"
                     "━━━━━━━━━━━━━━\n\n"
 
                     f"🆔 ID : <code>{withdraw_id}</code>\n\n"
 
                     f"💰 Nominal : "
-                    f"<b>{rupiah(withdraw['amount'])}</b>\n\n"
+                    f"<b>{rupiah(withdraw['amount'])}</b>\n"
 
                     f"📤 Diterima : "
-                    f"<b>{rupiah(withdraw['receive_amount'])}</b>\n\n"
+                    f"<b>{rupiah(receive)}</b>\n\n"
 
                     "📌 Status : ✅ SUCCESS\n\n"
-
                     "Dana telah berhasil dikirim."
                 ),
 
                 parse_mode="HTML"
-
             )
 
-
         except Exception:
-
             logger.exception(
                 "UPDATE CHANNEL SUCCESS ERROR"
             )
 
 
-
-    # =====================================================
     # USER NOTIFICATION
-    # =====================================================
 
     try:
 
         await call.bot.send_message(
-
             chat_id=withdraw["user_id"],
 
             text=(
-
                 "✅ <b>WITHDRAW BERHASIL</b>\n"
                 "━━━━━━━━━━━━━━\n\n"
 
                 f"🆔 ID : <code>{withdraw_id}</code>\n\n"
 
                 f"💰 Nominal : "
-                f"<b>{rupiah(withdraw['amount'])}</b>\n\n"
+                f"<b>{rupiah(withdraw['amount'])}</b>\n"
 
                 f"📤 Diterima : "
-                f"<b>{rupiah(withdraw['receive_amount'])}</b>\n\n"
+                f"<b>{rupiah(receive)}</b>\n\n"
 
                 "Dana telah berhasil dikirim."
             ),
 
             parse_mode="HTML"
-
         )
 
-
     except Exception:
-
         logger.exception(
             "SEND USER SUCCESS ERROR"
         )
 
-
-
-    # =====================================================
-    # HAPUS BUTTON ADMIN
-    # =====================================================
 
     try:
 
@@ -226,93 +182,73 @@ async def approve_withdraw(
         )
 
     except Exception:
-
         pass
+
+
+    await call.answer(
+        "Withdraw berhasil disetujui."
+    )
 
 # =====================================================
 # REJECT MENU
 # =====================================================
 
-async def reject_menu(
-    call,
-    withdraw_id
-):
+async def reject_menu(call, withdraw_id):
 
     kb = InlineKeyboardBuilder()
 
     reasons = [
-
         ("❌ Nomor E-Wallet Salah", "nomor salah"),
         ("❌ Nama Tidak Sesuai", "nama tidak sesuai"),
         ("❌ Rekening Tidak Aktif", "rekening tidak aktif"),
         ("❌ Alasan Lain", "lain")
-
     ]
 
-
     for text, reason in reasons:
-
         kb.button(
             text=text,
             callback_data=f"wd_reject:{withdraw_id}:{reason}"
         )
-
 
     kb.button(
         text="🔙 Batal",
         callback_data="wd_cancel"
     )
 
-
     kb.adjust(1)
 
-
     await call.message.edit_text(
-
         (
             "❌ <b>ALASAN REJECT WITHDRAW</b>\n"
             "━━━━━━━━━━━━━━\n\n"
             "Silakan pilih alasan penolakan."
         ),
-
         parse_mode="HTML",
         reply_markup=kb.as_markup()
-
     )
-
 
 
 # =====================================================
 # REJECT PROCESS
 # =====================================================
 
-@router.callback_query(
-    F.data.startswith("wd_reject:")
-)
-async def process_reject(
-    call: CallbackQuery
-):
+@router.callback_query(F.data.startswith("wd_reject:"))
+async def process_reject(call: CallbackQuery):
 
     if call.from_user.id not in ADMIN_IDS:
-
         return await call.answer(
             "Tidak memiliki akses.",
             show_alert=True
         )
 
-
     _, withdraw_id, reason = call.data.split(":", 2)
 
     withdraw_id = int(withdraw_id)
 
-
     pool = await get_pool()
 
-
     async with pool.acquire() as conn:
-
         async with conn.transaction():
-
 
             withdraw = await conn.fetchrow(
                 """
@@ -336,14 +272,11 @@ async def process_reject(
                 withdraw_id
             )
 
-
             if not withdraw:
-
                 return await call.answer(
                     "Withdraw sudah diproses.",
                     show_alert=True
                 )
-
 
 
             total_refund = (
@@ -353,10 +286,7 @@ async def process_reject(
             )
 
 
-
-            # =============================
             # REFUND SALDO
-            # =============================
 
             await conn.execute(
                 """
@@ -364,7 +294,7 @@ async def process_reject(
 
                 SET balance = balance + $1
 
-                WHERE telegram_id=$2
+                WHERE user_id=$2
                 """,
 
                 total_refund,
@@ -372,42 +302,7 @@ async def process_reject(
             )
 
 
-
-            # =============================
-            # WALLET LOG
-            # =============================
-
-            await conn.execute(
-                """
-                INSERT INTO wallet_transactions
-                (
-                    telegram_id,
-                    type,
-                    amount,
-                    description,
-                    created_at
-                )
-
-                VALUES
-                (
-                    $1,
-                    'withdraw_refund',
-                    $2,
-                    $3,
-                    NOW()
-                )
-                """,
-
-                withdraw["user_id"],
-                total_refund,
-                f"Refund Withdraw #{withdraw_id}"
-            )
-
-
-
-            # =============================
             # UPDATE WITHDRAW
-            # =============================
 
             await conn.execute(
                 """
@@ -426,23 +321,17 @@ async def process_reject(
             )
 
 
-
-    # =====================================================
     # UPDATE CHANNEL
-    # =====================================================
 
     if withdraw["channel_message_id"]:
 
         try:
 
             await call.bot.edit_message_text(
-
                 chat_id=WITHDRAW_CHANNEL_ID,
-
                 message_id=withdraw["channel_message_id"],
 
                 text=(
-
                     "❌ <b>WITHDRAW DITOLAK</b>\n"
                     "━━━━━━━━━━━━━━\n\n"
 
@@ -458,30 +347,22 @@ async def process_reject(
                 ),
 
                 parse_mode="HTML"
-
             )
 
-
         except Exception:
-
             logger.exception(
                 "UPDATE CHANNEL REJECT ERROR"
             )
 
 
-
-    # =====================================================
     # USER NOTIFICATION
-    # =====================================================
 
     try:
 
         await call.bot.send_message(
-
             chat_id=withdraw["user_id"],
 
             text=(
-
                 "❌ <b>WITHDRAW DITOLAK</b>\n"
                 "━━━━━━━━━━━━━━\n\n"
 
@@ -494,21 +375,13 @@ async def process_reject(
             ),
 
             parse_mode="HTML"
-
         )
 
-
     except Exception:
-
         logger.exception(
             "SEND USER REJECT ERROR"
         )
 
-
-
-    # =====================================================
-    # HAPUS BUTTON ADMIN
-    # =====================================================
 
     try:
 
@@ -517,9 +390,7 @@ async def process_reject(
         )
 
     except Exception:
-
         pass
-
 
 
     await call.answer(
