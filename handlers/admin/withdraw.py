@@ -37,6 +37,13 @@ async def admin_withdraw_action(
 
     data = call.data.split(":")
 
+    if len(data) < 3:
+        return await call.answer(
+            "Data tidak valid.",
+            show_alert=True
+        )
+
+
     action = data[1]
     withdraw_id = int(data[2])
 
@@ -67,19 +74,21 @@ async def admin_withdraw_action(
 
 async def approve_withdraw(
     call,
-    withdraw_id
+    withdraw_id: int
 ):
 
     pool = await get_pool()
+
 
     async with pool.acquire() as conn:
 
         async with conn.transaction():
 
+
             withdraw = await conn.fetchrow(
                 """
                 SELECT
-                    seller_id,
+                    user_id,
                     amount,
                     fee,
                     channel_message_id
@@ -98,12 +107,15 @@ async def approve_withdraw(
                 withdraw_id
             )
 
+
             if not withdraw:
 
                 return await call.answer(
                     "Withdraw sudah diproses.",
                     show_alert=True
                 )
+
+
 
             await conn.execute(
                 """
@@ -117,6 +129,8 @@ async def approve_withdraw(
                 """,
                 withdraw_id
             )
+
+
 
     # =====================================================
     # UPDATE CHANNEL
@@ -151,11 +165,14 @@ async def approve_withdraw(
 
             )
 
+
         except Exception:
 
             logger.exception(
                 "UPDATE CHANNEL SUCCESS ERROR"
             )
+
+
 
     # =====================================================
     # USER NOTIFICATION
@@ -165,9 +182,9 @@ async def approve_withdraw(
 
         await call.bot.send_message(
 
-            withdraw["seller_id"],
+            chat_id=withdraw["user_id"],
 
-            (
+            text=(
 
                 "✅ <b>WITHDRAW BERHASIL</b>\n"
                 "━━━━━━━━━━━━━━\n\n"
@@ -184,11 +201,14 @@ async def approve_withdraw(
 
         )
 
+
     except Exception:
 
         logger.exception(
             "SEND USER SUCCESS ERROR"
         )
+
+
 
     # =====================================================
     # HAPUS TOMBOL ADMIN
@@ -199,6 +219,7 @@ async def approve_withdraw(
         await call.message.edit_reply_markup(
             reply_markup=None
         )
+
 
     except Exception:
 
@@ -225,6 +246,7 @@ async def reject_menu(
 
     ]
 
+
     for text, reason in reasons:
 
         kb.button(
@@ -232,12 +254,15 @@ async def reject_menu(
             callback_data=f"wd_reject:{withdraw_id}:{reason}"
         )
 
+
     kb.button(
         text="🔙 Batal",
         callback_data="wd_cancel"
     )
 
+
     kb.adjust(1)
+
 
     await call.message.edit_text(
 
@@ -251,6 +276,7 @@ async def reject_menu(
         reply_markup=kb.as_markup()
 
     )
+
 
 
 # =====================================================
@@ -271,20 +297,24 @@ async def process_reject(
             show_alert=True
         )
 
+
     _, withdraw_id, reason = call.data.split(":", 2)
 
     withdraw_id = int(withdraw_id)
 
+
     pool = await get_pool()
+
 
     async with pool.acquire() as conn:
 
         async with conn.transaction():
 
+
             withdraw = await conn.fetchrow(
                 """
                 SELECT
-                    seller_id,
+                    user_id,
                     amount,
                     fee,
                     channel_message_id
@@ -293,7 +323,7 @@ async def process_reject(
 
                 WHERE id=$1
 
-                AND status IN (
+                AND status IN(
                     'pending',
                     'instant_pending'
                 )
@@ -303,6 +333,7 @@ async def process_reject(
                 withdraw_id
             )
 
+
             if not withdraw:
 
                 return await call.answer(
@@ -310,7 +341,15 @@ async def process_reject(
                     show_alert=True
                 )
 
-            total = withdraw["amount"] + withdraw["fee"]
+
+
+            total = (
+                withdraw["amount"]
+                +
+                withdraw["fee"]
+            )
+
+
 
             # =============================
             # KEMBALIKAN SALDO
@@ -325,8 +364,10 @@ async def process_reject(
                 WHERE telegram_id=$2
                 """,
                 total,
-                withdraw["seller_id"]
+                withdraw["user_id"]
             )
+
+
 
             # =============================
             # WALLET LOG
@@ -352,10 +393,13 @@ async def process_reject(
                     NOW()
                 )
                 """,
-                withdraw["seller_id"],
+
+                withdraw["user_id"],
                 total,
                 f"Refund Withdraw #{withdraw_id}"
             )
+
+
 
             # =============================
             # UPDATE STATUS
@@ -367,14 +411,17 @@ async def process_reject(
 
                 SET
                     status='rejected',
-                    reject_reason=$1,
+                    admin_note=$1,
                     processed_at=NOW()
 
                 WHERE id=$2
                 """,
+
                 reason,
                 withdraw_id
             )
+
+
 
     # =====================================================
     # UPDATE CHANNEL
@@ -410,11 +457,14 @@ async def process_reject(
 
             )
 
+
         except Exception:
 
             logger.exception(
                 "UPDATE CHANNEL REJECT ERROR"
             )
+
+
 
     # =====================================================
     # USER NOTIFICATION
@@ -424,9 +474,9 @@ async def process_reject(
 
         await call.bot.send_message(
 
-            withdraw["seller_id"],
+            chat_id=withdraw["user_id"],
 
-            (
+            text=(
 
                 "❌ <b>WITHDRAW DITOLAK</b>\n"
                 "━━━━━━━━━━━━━━\n\n"
@@ -444,11 +494,14 @@ async def process_reject(
 
         )
 
+
     except Exception:
 
         logger.exception(
             "SEND USER REJECT ERROR"
         )
+
+
 
     # =====================================================
     # HAPUS TOMBOL ADMIN
@@ -460,9 +513,12 @@ async def process_reject(
             reply_markup=None
         )
 
+
     except Exception:
 
         pass
+
+
 
     await call.answer(
         "Withdraw berhasil ditolak."
