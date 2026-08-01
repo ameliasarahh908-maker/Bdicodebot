@@ -6,6 +6,8 @@ from aiogram.types import (
 )
 
 from database import get_pool
+from bot import bot
+from config import STORAGE_CHANNEL_ID
 
 
 router = Router()
@@ -22,8 +24,8 @@ async def delete_file(call: CallbackQuery):
 
     user_id = call.from_user.id
 
-
     pool = await get_pool()
+
 
 
     # =========================
@@ -82,9 +84,8 @@ async def delete_file(call: CallbackQuery):
             (
                 "🔒 <b>FILE TIDAK BISA DIHAPUS</b>\n\n"
                 f"📁 File : <b>{file['title']}</b>\n"
-                f"🛒 Sudah terjual : <b>{sold}x</b>\n\n"
-                "File yang sudah dibeli user tidak bisa dihapus "
-                "agar akses pembeli tetap aman."
+                f"🛒 Terjual : <b>{sold}x</b>\n\n"
+                "File sudah dibeli user sehingga tidak bisa dihapus."
             ),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
@@ -102,7 +103,45 @@ async def delete_file(call: CallbackQuery):
 
 
     # =========================
-    # HAPUS MEDIA
+    # AMBIL MEDIA MESSAGE ID
+    # =========================
+
+    medias = await pool.fetch(
+        """
+        SELECT
+            message_id
+        FROM medias
+        WHERE code=$1
+        """,
+        code
+    )
+
+
+
+    # =========================
+    # HAPUS MEDIA DI STORAGE CHANNEL
+    # =========================
+
+    for media in medias:
+
+        try:
+
+            await bot.delete_message(
+                chat_id=STORAGE_CHANNEL_ID,
+                message_id=media["message_id"]
+            )
+
+
+        except Exception as e:
+
+            print(
+                f"Gagal hapus media {media['message_id']}: {e}"
+            )
+
+
+
+    # =========================
+    # HAPUS DATABASE MEDIA
     # =========================
 
     await pool.execute(
@@ -112,6 +151,7 @@ async def delete_file(call: CallbackQuery):
         """,
         code
     )
+
 
 
     # =========================
@@ -130,11 +170,15 @@ async def delete_file(call: CallbackQuery):
 
 
 
+    # =========================
+    # RESPONSE
+    # =========================
+
     await call.message.edit_text(
         (
             "✅ <b>FILE BERHASIL DIHAPUS</b>\n\n"
             f"📁 {file['title']}\n\n"
-            "File sudah dihapus dari marketplace."
+            "🗑 Database dan media storage sudah dibersihkan."
         ),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(
