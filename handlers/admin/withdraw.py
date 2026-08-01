@@ -18,6 +18,84 @@ logger = logging.getLogger(__name__)
 
 
 # =====================================================
+# LIST WITHDRAW PENDING
+# =====================================================
+
+@router.callback_query(F.data=="admin_withdraw")
+async def admin_withdraw(call: CallbackQuery):
+
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            id,
+            user_id,
+            amount,
+            status
+        FROM withdraws
+        WHERE status IN(
+            'pending',
+            'instant_pending'
+        )
+        ORDER BY id DESC
+        LIMIT 10
+        """
+    )
+
+
+    if not rows:
+        return await call.answer(
+            "Tidak ada withdraw pending",
+            show_alert=True
+        )
+
+
+    kb = InlineKeyboardBuilder()
+
+    text = (
+        "🏧 <b>WITHDRAW PENDING</b>\n"
+        "━━━━━━━━━━━━━━\n\n"
+    )
+
+
+    for row in rows:
+
+        text += (
+            f"🆔 {row['id']}\n"
+            f"👤 {row['user_id']}\n"
+            f"💰 {rupiah(row['amount'])}\n"
+            f"📌 {row['status']}\n\n"
+        )
+
+        kb.button(
+            text=f"Proses #{row['id']}",
+            callback_data=f"admin_wd:view:{row['id']}"
+        )
+
+
+    kb.button(
+        text="🔙 Kembali",
+        callback_data="admin_home"
+    )
+
+    kb.adjust(1)
+
+
+    await call.message.edit_text(
+        text,
+        reply_markup=kb.as_markup(),
+        parse_mode="HTML"
+    )
+
+    await call.answer()
+
+
+
+# =====================================================
 # ADMIN BUTTON
 # =====================================================
 
