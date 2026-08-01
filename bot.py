@@ -67,6 +67,7 @@ from handlers.channel import router as channel_router
 from handlers.account import router as account_router
 from handlers.my_code import router as my_code_router
 from handlers.help import router as help_router
+from handlers.market_detail import router as market_detail_router
 
 from handlers.pay import router as pay_router
 from handlers.cancel import router as cancel_router
@@ -111,6 +112,7 @@ dp.include_router(new_code_router)
 dp.include_router(account_router)
 dp.include_router(my_code_router)
 dp.include_router(help_router)
+dp.include_router(market_detail_router)
 
 # PAYMENT
 dp.include_router(pay_router)
