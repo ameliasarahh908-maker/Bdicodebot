@@ -6,6 +6,7 @@ import time
 
 from typing import Dict
 from contextlib import asynccontextmanager
+from aiogram.filters import StateFilter
 
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
@@ -294,7 +295,7 @@ async def open_file_by_code(
 
 
 # =====================================
-# RECEIVE CODE + AUTO DETECT
+# RECEIVE CODE
 # =====================================
 
 CODE_REGEX = re.compile(
@@ -312,7 +313,10 @@ def normalize_code(code: str):
     )
 
 
-@router.message(F.text)
+@router.message(
+    StateFilter(GetFileState.waiting_code),
+    F.text
+)
 async def receive_code(
     message: Message,
     state: FSMContext
@@ -320,63 +324,43 @@ async def receive_code(
 
     async with user_lock(message.from_user.id):
 
-        data = await state.get_data()
         text = (message.text or "").strip()
 
         match = CODE_REGEX.search(text)
 
-        # =================================
-        # GET FILE MODE
-        # =================================
-
-        if data.get("getfile_mode"):
-
-            if not match:
-
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-
-                await state.clear()
-
-                return await message.answer(
-                    "❌ Itu bukan CODE bot saya.\n\n"
-                    "Silakan kirim CODE yang benar."
-                )
-
-            code = normalize_code(match.group())
+        if not match:
 
             try:
                 await message.delete()
             except Exception:
                 pass
 
-            progress_id = data.get("progress_msg_id")
+            await state.clear()
 
-            if progress_id:
-                try:
-                    await message.bot.delete_message(
-                        chat_id=message.chat.id,
-                        message_id=progress_id
-                    )
-                except Exception:
-                    pass
-
-            return await open_file_by_code(
-                message,
-                code,
-                state
+            return await message.answer(
+                "❌ Itu bukan CODE bot saya.\n\n"
+                "Silakan kirim CODE yang benar."
             )
 
-        # =================================
-        # AUTO DETECT
-        # =================================
-
-        if not match:
-            return
-
         code = normalize_code(match.group())
+
+        try:
+            await message.delete()
+        except Exception:
+            pass
+
+        data = await state.get_data()
+
+        progress_id = data.get("progress_msg_id")
+
+        if progress_id:
+            try:
+                await message.bot.delete_message(
+                    chat_id=message.chat.id,
+                    message_id=progress_id
+                )
+            except Exception:
+                pass
 
         return await open_file_by_code(
             message,
