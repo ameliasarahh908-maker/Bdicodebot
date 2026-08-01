@@ -18,7 +18,6 @@ async def myfile_detail(call: CallbackQuery):
 
     user_id = call.from_user.id
 
-
     pool = await get_pool()
 
 
@@ -38,7 +37,6 @@ async def myfile_detail(call: CallbackQuery):
                 AND p.status='paid'
             ) AS sold,
 
-
             (
                 SELECT COALESCE(
                     SUM(p.paid_price),
@@ -48,7 +46,6 @@ async def myfile_detail(call: CallbackQuery):
                 WHERE p.file_code=f.code
                 AND p.status='paid'
             ) AS income
-
 
         FROM files f
 
@@ -70,14 +67,18 @@ async def myfile_detail(call: CallbackQuery):
         )
 
 
-
     harga = (
         "🆓 Gratis"
         if not file["is_paid"]
         else
-        f"Rp {file['price']:,}".replace(",",".")
+        f"Rp {file['price']:,}".replace(",", ".")
     )
 
+
+    income = (
+        f"Rp {file['income']:,}"
+        .replace(",", ".")
+    )
 
 
     text = (
@@ -90,15 +91,21 @@ async def myfile_detail(call: CallbackQuery):
         f"💰 Harga : {harga}\n"
         f"📦 Media : {file['media_count']}\n"
         f"🛒 Terjual : {file['sold']}x\n"
-        f"💵 Pendapatan : Rp {file['income']:,}\n"
+        f"💵 Pendapatan : {income}\n"
 
         "\n━━━━━━━━━━━━━━"
-    ).replace(",", ".")
-
+    )
 
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
+
+            [
+                InlineKeyboardButton(
+                    text="✏️ Edit Harga",
+                    callback_data=f"edit_price:{code}"
+                )
+            ],
 
             [
                 InlineKeyboardButton(
@@ -116,7 +123,6 @@ async def myfile_detail(call: CallbackQuery):
 
         ]
     )
-
 
 
     await call.message.edit_text(
