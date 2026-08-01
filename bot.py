@@ -81,7 +81,6 @@ from handlers.withdraw import (
 )
 
 from handlers.admin import router as admin_router
-from handlers.admin.withdraw import router as admin_withdraw_router
 from handlers.notify import router as notify_router
 from handlers.marketplace import router as marketplace_router
 
@@ -131,7 +130,6 @@ dp.include_router(withdraw_confirm_router)
 
 # ADMIN
 dp.include_router(admin_router)
-dp.include_router(admin_withdraw_router)
 
 # MARKETPLACE
 dp.include_router(marketplace_router)
