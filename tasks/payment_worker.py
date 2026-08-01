@@ -35,13 +35,18 @@ async def payment_worker():
 
                 try:
 
+                    # =========================
+                    # CEK FILE
+                    # =========================
+
                     file = await fetchrow(
                         """
                         SELECT
                             owner_id,
                             price
                         FROM files
-                        WHERE LOWER(TRIM(code)) =
+                        WHERE LOWER(TRIM(code))
+                              =
                               LOWER(TRIM($1))
                         LIMIT 1
                         """,
@@ -61,7 +66,7 @@ async def payment_worker():
 
 
                     # =========================
-                    # KIRIM FILE PEMBELI
+                    # KIRIM FILE KE BUYER
                     # =========================
 
                     sent = await send_page(
@@ -74,18 +79,74 @@ async def payment_worker():
 
 
                     if not sent:
+
+                        logging.warning(
+                            "Gagal kirim file %s",
+                            p["code"]
+                        )
+
                         continue
 
 
 
                     # =========================
-                    # KOMISI SELLER 50%
+                    # SIMPAN PEMBELIAN
+                    # =========================
+
+                    purchase = await fetchrow(
+                        """
+                        SELECT id
+                        FROM file_purchases
+                        WHERE payment_id=$1
+                        LIMIT 1
+                        """,
+                        p["invoice_id"]
+                    )
+
+
+                    if not purchase:
+
+                        await execute(
+                            """
+                            INSERT INTO file_purchases(
+                                user_id,
+                                file_code,
+                                owner_id,
+                                paid_price,
+                                payment_id,
+                                status,
+                                paid_at
+                            )
+                            VALUES(
+                                $1,$2,$3,$4,$5,
+                                'paid',
+                                NOW()
+                            )
+                            """,
+                            p["user_id"],
+                            p["code"],
+                            file["owner_id"],
+                            file["price"],
+                            p["invoice_id"]
+                        )
+
+
+                        logging.info(
+                            "🛒 Purchase saved %s",
+                            p["code"]
+                        )
+
+
+
+                    # =========================
+                    # BAYAR SELLER 50%
                     # =========================
 
                     if not p["seller_paid"]:
 
                         seller_id = file["owner_id"]
                         price = file["price"] or 0
+
 
                         seller_earn = int(
                             price * 0.5
@@ -99,8 +160,12 @@ async def payment_worker():
                                 """
                                 UPDATE users
                                 SET
-                                    balance = balance + $1,
-                                    total_earn = total_earn + $1
+                                    balance =
+                                    balance + $1,
+
+                                    total_earn =
+                                    total_earn + $1
+
                                 WHERE user_id=$2
                                 """,
                                 seller_earn,
@@ -108,8 +173,31 @@ async def payment_worker():
                             )
 
 
+                            # log transaksi seller
+
+                            await execute(
+                                """
+                                INSERT INTO transactions(
+                                    user_id,
+                                    type,
+                                    amount,
+                                    description
+                                )
+                                VALUES(
+                                    $1,
+                                    'file_sale',
+                                    $2,
+                                    $3
+                                )
+                                """,
+                                seller_id,
+                                seller_earn,
+                                f"Pendapatan file {p['code']}"
+                            )
+
+
                             logging.info(
-                                "💰 Seller mendapat Rp%s user=%s",
+                                "💰 Seller +Rp%s user=%s",
                                 seller_earn,
                                 seller_id
                             )
@@ -129,7 +217,7 @@ async def payment_worker():
 
 
                     # =========================
-                    # PAYMENT SELESAI
+                    # SELESAIKAN PAYMENT
                     # =========================
 
                     await execute(
@@ -145,7 +233,7 @@ async def payment_worker():
 
 
                     logging.info(
-                        "✅ File sent %s",
+                        "✅ Payment completed %s",
                         p["invoice_id"]
                     )
 
@@ -154,7 +242,7 @@ async def payment_worker():
                 except Exception:
 
                     logging.exception(
-                        "❌ Failed payment %s",
+                        "❌ PAYMENT PROCESS ERROR %s",
                         p["invoice_id"]
                     )
 
