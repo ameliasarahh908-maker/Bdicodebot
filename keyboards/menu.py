@@ -4,7 +4,7 @@ from aiogram.types import (
 )
 
 
-async def home_kb(user_id: int):
+def home_kb(user_id: int):
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -22,12 +22,23 @@ async def home_kb(user_id: int):
 
             [
                 InlineKeyboardButton(
-                    text="📦 Code",
+                    text="📦 My Code",
                     callback_data="code"
                 ),
                 InlineKeyboardButton(
+                    text="💰 Wallet",
+                    callback_data="wallet"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
                     text="💸 Withdraw",
                     callback_data="withdraw"
+                ),
+                InlineKeyboardButton(
+                    text="📊 Marketplace",
+                    callback_data="marketplace"
                 )
             ],
 
