@@ -126,7 +126,6 @@ async def dashboard_text():
     except Exception as e:
         print("PAYMENT ERROR:", e)
 
-
     # WITHDRAW
     withdraw_pending = 0
     withdraw_process = 0
@@ -138,7 +137,7 @@ async def dashboard_text():
             """
             SELECT COUNT(*)
             FROM withdraws
-            WHERE status IN(
+            WHERE status IN (
                 'pending',
                 'instant_pending'
             )
@@ -149,7 +148,7 @@ async def dashboard_text():
             """
             SELECT COUNT(*)
             FROM withdraws
-            WHERE status IN(
+            WHERE status IN (
                 'process',
                 'processing'
             )
@@ -175,39 +174,37 @@ async def dashboard_text():
     except Exception as e:
         print("WITHDRAW ERROR:", e)
 
-
     now = datetime.now(
         pytz.timezone("Asia/Jakarta")
     ).strftime("%d-%m-%Y %H:%M WIB")
 
+    return (
+        "🛠 <b>ADMIN PANEL</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
 
-        return (
-            "🛠 <b>ADMIN PANEL</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n"
+        "📊 <b>SYSTEM</b>\n"
+        f"👤 User : <b>{users}</b>\n"
+        f"📂 File : <b>{files}</b>\n"
+        f"🖼 Media : <b>{media}</b>\n\n"
 
-            "📊 <b>SYSTEM</b>\n"
-            f"👤 User : <b>{users}</b>\n"
-            f"📂 File : <b>{files}</b>\n"
-            f"🖼 Media : <b>{media}</b>\n\n"
+        "💰 <b>FINANCE</b>\n"
+        f"👛 Balance : <b>{rupiah(balance)}</b>\n"
+        f"💵 Revenue : <b>{rupiah(revenue)}</b>\n\n"
 
-            "💰 <b>FINANCE</b>\n"
-            f"👛 Balance : <b>{rupiah(balance)}</b>\n"
-            f"💵 Revenue : <b>{rupiah(revenue)}</b>\n\n"
+        "💳 <b>PAYMENT</b>\n"
+        f"🟡 Pending : <b>{pending_payment}</b>\n"
+        f"🟢 Paid : <b>{paid_payment}</b>\n"
+        f"🔴 Failed : <b>{failed_payment}</b>\n\n"
 
-            "💳 <b>PAYMENT</b>\n"
-            f"🟡 Pending : <b>{pending_payment}</b>\n"
-            f"🟢 Paid : <b>{paid_payment}</b>\n"
-            f"🔴 Failed : <b>{failed_payment}</b>\n\n"
+        "🏧 <b>WITHDRAW</b>\n"
+        f"🟡 Pending : <b>{withdraw_pending}</b>\n"
+        f"🔵 Process : <b>{withdraw_process}</b>\n"
+        f"🟢 Success : <b>{withdraw_success}</b>\n"
+        f"🔴 Reject : <b>{withdraw_reject}</b>\n\n"
 
-            "🏧 <b>WITHDRAW</b>\n"
-            f"🟡 Pending : <b>{withdraw_pending}</b>\n"
-            f"🔵 Process : <b>{withdraw_process}</b>\n"
-            f"🟢 Success : <b>{withdraw_success}</b>\n"
-            f"🔴 Reject : <b>{withdraw_reject}</b>\n"
-
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"🕒 <i>{now}</i>"
-        )
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🕒 <i>{now}</i>"
+    )
 
 # =========================
 # BUTTON
