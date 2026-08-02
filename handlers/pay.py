@@ -574,7 +574,7 @@ async def check_payment(call: CallbackQuery):
                     [
                         InlineKeyboardButton(
                             text="🛒 Buy Now",
-                            url="https://t.me/+T4sXrm9HtH9kZmE1"
+                            url="https://t.me/mktplbot?start=buy"
                         )
                     ]
                 ]
