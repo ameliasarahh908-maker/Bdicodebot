@@ -181,42 +181,33 @@ async def dashboard_text():
     ).strftime("%d-%m-%Y %H:%M WIB")
 
 
-    return (
-        "🛠 <b>ADMIN PANEL</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
+        return (
+            "🛠 <b>ADMIN PANEL</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n"
 
-        "📊 <b>SYSTEM</b>\n\n"
-        f"👤 User     : {users}\n"
-        f"📂 Files    : {files}\n"
-        f"🖼 Media    : {media}\n\n"
+            "📊 <b>SYSTEM</b>\n"
+            f"👤 User : <b>{users}</b>\n"
+            f"📂 File : <b>{files}</b>\n"
+            f"🖼 Media : <b>{media}</b>\n\n"
 
-        "━━━━━━━━━━━━━━━━━━\n\n"
+            "💰 <b>FINANCE</b>\n"
+            f"👛 Balance : <b>{rupiah(balance)}</b>\n"
+            f"💵 Revenue : <b>{rupiah(revenue)}</b>\n\n"
 
-        "💰 <b>FINANCE</b>\n\n"
-        f"👛 Balance  : {rupiah(balance)}\n"
-        f"💵 Revenue  : {rupiah(revenue)}\n\n"
+            "💳 <b>PAYMENT</b>\n"
+            f"🟡 Pending : <b>{pending_payment}</b>\n"
+            f"🟢 Paid : <b>{paid_payment}</b>\n"
+            f"🔴 Failed : <b>{failed_payment}</b>\n\n"
 
-        "━━━━━━━━━━━━━━━━━━\n\n"
+            "🏧 <b>WITHDRAW</b>\n"
+            f"🟡 Pending : <b>{withdraw_pending}</b>\n"
+            f"🔵 Process : <b>{withdraw_process}</b>\n"
+            f"🟢 Success : <b>{withdraw_success}</b>\n"
+            f"🔴 Reject : <b>{withdraw_reject}</b>\n"
 
-        "💳 <b>PAYMENT</b>\n"
-        f"🟡 Pending : {pending_payment}\n"
-        f"🟢 Paid    : {paid_payment}\n"
-        f"🔴 Failed  : {failed_payment}\n\n"
-
-        "━━━━━━━━━━━━━━━━━━\n\n"
-
-        "🏧 <b>WITHDRAW</b>\n"
-        f"🟡 Pending : {withdraw_pending}\n"
-        f"🔵 Process : {withdraw_process}\n"
-        f"🟢 Success : {withdraw_success}\n"
-        f"🔴 Reject  : {withdraw_reject}\n\n"
-
-        "━━━━━━━━━━━━━━━━━━\n\n"
-
-        f"🕒 Update : {now}"
-    )
-
-
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"🕒 <i>{now}</i>"
+        )
 
 # =========================
 # BUTTON
