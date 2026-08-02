@@ -292,3 +292,68 @@ async def withdraw_amount(call: CallbackQuery):
         parse_mode="HTML",
         reply_markup=kb.as_markup()
     )
+
+# =========================
+# RIWAYAT WITHDRAW
+# =========================
+
+@router.callback_query(F.data == "withdraw_history")
+async def withdraw_history(call: CallbackQuery):
+
+    await call.answer()
+
+    pool = await get_pool()
+
+    rows = await pool.fetch(
+        """
+        SELECT
+            amount,
+            fee,
+            status,
+            created_at
+        FROM withdraws
+        WHERE user_id=$1
+        ORDER BY created_at DESC
+        LIMIT 10
+        """,
+        call.from_user.id
+    )
+
+    text = (
+        "📜 <b>RIWAYAT WITHDRAW</b>\n"
+        "━━━━━━━━━━━━━━\n\n"
+    )
+
+    if not rows:
+
+        text += "Belum ada riwayat withdraw."
+
+    else:
+
+        status_map = {
+            "pending": "🟡 Pending",
+            "approved": "🟢 Berhasil",
+            "rejected": "🔴 Ditolak",
+        }
+
+        for i, wd in enumerate(rows, start=1):
+
+            text += (
+                f"{i}. {status_map.get(wd['status'], wd['status'])}\n"
+                f"💰 {rupiah(wd['amount'])}\n"
+                f"💸 Fee : {rupiah(wd['fee'])}\n"
+                f"📅 {wd['created_at']}\n\n"
+            )
+
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="⬅ Kembali",
+        callback_data="withdraw"
+    )
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
+    )
