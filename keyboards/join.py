@@ -22,7 +22,7 @@ def join_kb(bot_username: str, user_id: int):
             [
                 InlineKeyboardButton(
                     text="📢 Join Channel 1",
-                    url="https://t.me/+T4sXrm9HtH9kZmE1"
+                    url="https://t.me/+CUAmQ49VFMw1MmRh"
                 )
             ],
             [
