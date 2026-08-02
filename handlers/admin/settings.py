@@ -24,28 +24,30 @@ router = Router()
 
 async def get_setting(pool, key, default=None):
     value = await pool.fetchval(
-        "SELECT value FROM settings WHERE key=$1",
+        """
+        SELECT value
+        FROM settings
+        WHERE key=$1
+        """,
         key
     )
 
     return value if value is not None else default
 
 
-
-async def set_setting(pool,key,value):
-
+async def set_setting(pool, key, value):
     await pool.execute(
         """
-        INSERT INTO settings(key,value)
-        VALUES($1,$2)
+        INSERT INTO settings(key, value)
+        VALUES($1, $2)
 
         ON CONFLICT(key)
-        DO UPDATE SET value=EXCLUDED.value
+        DO UPDATE
+        SET value = EXCLUDED.value
         """,
         key,
         str(value)
     )
-
 
 
 # =========================
@@ -53,34 +55,48 @@ async def set_setting(pool,key,value):
 # =========================
 
 class AdminState(StatesGroup):
-
     add_admin = State()
     add_owner = State()
 
 
 class SchedulerState(StatesGroup):
-
     waiting_time = State()
     waiting_text = State()
 
 
-
 class MaintenanceState(StatesGroup):
-
     waiting_text = State()
 
 
-
 # =========================
-# MENU
+# SETTINGS MENU
 # =========================
 
-@router.callback_query(F.data=="admin_settings")
-async def admin_settings(call:CallbackQuery):
+@router.callback_query(F.data == "admin_settings")
+async def admin_settings(call: CallbackQuery):
 
     if not is_admin(call.from_user.id):
-        return
+        return await call.answer(
+            "❌ Tidak memiliki akses",
+            show_alert=True
+        )
 
+    pool = await get_pool()
+
+    maintenance = await get_setting(
+        pool,
+        "maintenance",
+        "off"
+    )
+
+    scheduler = await get_setting(
+        pool,
+        "scheduler",
+        "off"
+    )
+
+    maintenance_icon = "🟢 ON" if maintenance == "on" else "🔴 OFF"
+    scheduler_icon = "🟢 ON" if scheduler == "on" else "🔴 OFF"
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -101,27 +117,39 @@ async def admin_settings(call:CallbackQuery):
 
             [
                 InlineKeyboardButton(
-                    text="🛠 Maintenance",
+                    text=f"🛠 Maintenance ({maintenance_icon})",
                     callback_data="set_maintenance"
                 )
             ],
 
             [
                 InlineKeyboardButton(
-                    text="⏰ Scheduler",
+                    text=f"⏰ Scheduler ({scheduler_icon})",
                     callback_data="set_scheduler"
                 )
             ],
 
+            [
+                InlineKeyboardButton(
+                    text="⬅ Admin Menu",
+                    callback_data="admin_home"
+                )
+            ]
+
         ]
     )
 
-
     await call.message.edit_text(
-        "⚙️ <b>ADMIN PANEL</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
+        (
+            "⚙️ <b>ADMIN SETTINGS</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+            "Kelola seluruh pengaturan bot dari menu di bawah."
+        ),
+        parse_mode="HTML",
+        reply_markup=kb
     )
+
+    await call.answer()
 
 
 
@@ -129,113 +157,182 @@ async def admin_settings(call:CallbackQuery):
 # ADD ADMIN
 # =========================
 
-@router.callback_query(F.data=="add_admin")
-async def add_admin(call:CallbackQuery,state:FSMContext):
+@router.callback_query(F.data == "add_admin")
+async def add_admin(
+    call: CallbackQuery,
+    state: FSMContext
+):
 
     if not is_admin(call.from_user.id):
-        return
+        return await call.answer(
+            "❌ Tidak memiliki akses",
+            show_alert=True
+        )
 
-
+    await state.clear()
     await state.set_state(AdminState.add_admin)
 
     await call.message.answer(
-        "🛡 Kirim Telegram ID admin baru"
+        (
+            "🛡 <b>TAMBAH ADMIN</b>\n\n"
+            "Kirim Telegram ID user."
+        ),
+        parse_mode="HTML"
     )
 
+    await call.answer()
 
 
 @router.message(AdminState.add_admin)
-async def save_admin(message:Message,state:FSMContext):
+async def save_admin(
+    message: Message,
+    state: FSMContext
+):
 
-    if not message.text.isdigit():
-
+    if not message.text or not message.text.isdigit():
         return await message.answer(
-            "❌ ID harus angka"
+            "❌ Telegram ID harus berupa angka."
         )
 
+    user_id = int(message.text)
 
-    user_id=int(message.text)
+    pool = await get_pool()
 
-    pool=await get_pool()
-
-
-    await pool.execute(
+    user = await pool.fetchrow(
         """
-        INSERT INTO admins(user_id,role)
-
-        VALUES($1,'admin')
-
-        ON CONFLICT(user_id)
-
-        DO UPDATE SET role='admin'
+        SELECT chat_id
+        FROM users
+        WHERE chat_id=$1
         """,
         user_id
     )
 
+    if not user:
+        await state.clear()
+        return await message.answer(
+            "❌ User tidak ditemukan."
+        )
+
+    await pool.execute(
+        """
+        INSERT INTO admins(user_id, role)
+        VALUES($1,'admin')
+
+        ON CONFLICT(user_id)
+        DO UPDATE
+        SET role='admin'
+        """,
+        user_id
+    )
+
+    await pool.execute(
+        """
+        UPDATE users
+        SET is_admin=TRUE
+        WHERE chat_id=$1
+        """,
+        user_id
+    )
 
     await message.answer(
-        f"✅ Admin ditambahkan\nID: <code>{user_id}</code>",
+        (
+            "✅ <b>Admin berhasil ditambahkan.</b>\n\n"
+            f"🆔 <code>{user_id}</code>"
+        ),
         parse_mode="HTML"
     )
 
-
     await state.clear()
-
 
 
 # =========================
 # ADD OWNER
 # =========================
 
-@router.callback_query(F.data=="add_owner")
-async def add_owner(call:CallbackQuery,state:FSMContext):
+@router.callback_query(F.data == "add_owner")
+async def add_owner(
+    call: CallbackQuery,
+    state: FSMContext
+):
 
     if not is_admin(call.from_user.id):
-        return
+        return await call.answer(
+            "❌ Tidak memiliki akses",
+            show_alert=True
+        )
 
-
+    await state.clear()
     await state.set_state(AdminState.add_owner)
 
     await call.message.answer(
-        "👑 Kirim Telegram ID owner baru"
+        (
+            "👑 <b>TAMBAH OWNER</b>\n\n"
+            "Kirim Telegram ID user."
+        ),
+        parse_mode="HTML"
     )
 
+    await call.answer()
 
 
 @router.message(AdminState.add_owner)
-async def save_owner(message:Message,state:FSMContext):
+async def save_owner(
+    message: Message,
+    state: FSMContext
+):
 
-    if not message.text.isdigit():
-
+    if not message.text or not message.text.isdigit():
         return await message.answer(
-            "❌ ID harus angka"
+            "❌ Telegram ID harus berupa angka."
         )
 
+    user_id = int(message.text)
 
-    user_id=int(message.text)
+    pool = await get_pool()
 
-    pool=await get_pool()
-
-
-    await pool.execute(
+    user = await pool.fetchrow(
         """
-        INSERT INTO admins(user_id,role)
-
-        VALUES($1,'owner')
-
-        ON CONFLICT(user_id)
-
-        DO UPDATE SET role='owner'
+        SELECT chat_id
+        FROM users
+        WHERE chat_id=$1
         """,
         user_id
     )
 
+    if not user:
+        await state.clear()
+        return await message.answer(
+            "❌ User tidak ditemukan."
+        )
 
-    await message.answer(
-        f"👑 Owner ditambahkan\nID: <code>{user_id}</code>",
-        parse_mode="HTML"
+    await pool.execute(
+        """
+        INSERT INTO admins(user_id, role)
+        VALUES($1,'owner')
+
+        ON CONFLICT(user_id)
+        DO UPDATE
+        SET role='owner'
+        """,
+        user_id
     )
 
+    await pool.execute(
+        """
+        UPDATE users
+        SET is_admin=TRUE
+        WHERE chat_id=$1
+        """,
+        user_id
+    )
+
+    await message.answer(
+        (
+            "👑 <b>Owner berhasil ditambahkan.</b>\n\n"
+            f"🆔 <code>{user_id}</code>"
+        ),
+        parse_mode="HTML"
+    )
 
     await state.clear()
 
@@ -245,60 +342,84 @@ async def save_owner(message:Message,state:FSMContext):
 # MAINTENANCE
 # =========================
 
-@router.callback_query(F.data=="set_maintenance")
-async def maintenance_menu(call:CallbackQuery):
+@router.callback_query(F.data == "set_maintenance")
+async def maintenance_menu(call: CallbackQuery):
 
-    pool=await get_pool()
+    if not is_admin(call.from_user.id):
+        return await call.answer(
+            "❌ Tidak memiliki akses",
+            show_alert=True
+        )
 
-    status=await get_setting(
+    pool = await get_pool()
+
+    status = await get_setting(
         pool,
         "maintenance",
         "off"
     )
 
+    text_status = "🟢 ON" if status == "on" else "🔴 OFF"
 
-    kb=InlineKeyboardMarkup(
+    kb = InlineKeyboardMarkup(
         inline_keyboard=[
 
             [
                 InlineKeyboardButton(
-                    text="ON/OFF",
+                    text=f"{text_status}",
                     callback_data="toggle_maintenance"
                 )
             ],
 
             [
                 InlineKeyboardButton(
-                    text="✏️ Set Pesan",
+                    text="✏️ Ubah Pesan",
                     callback_data="set_maint_text"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="⬅ Kembali",
+                    callback_data="admin_settings"
                 )
             ]
 
         ]
     )
 
-
     await call.message.edit_text(
-        f"🛠 Maintenance : {status}",
+        (
+            "🛠 <b>MAINTENANCE MODE</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+            f"Status : <b>{text_status}</b>"
+        ),
+        parse_mode="HTML",
         reply_markup=kb
     )
 
+    await call.answer()
 
 
-@router.callback_query(F.data=="toggle_maintenance")
-async def toggle(call:CallbackQuery):
+# =========================
+# TOGGLE MAINTENANCE
+# =========================
 
-    pool=await get_pool()
+@router.callback_query(F.data == "toggle_maintenance")
+async def toggle_maintenance(call: CallbackQuery):
 
-    old=await get_setting(
+    if not is_admin(call.from_user.id):
+        return
+
+    pool = await get_pool()
+
+    old = await get_setting(
         pool,
         "maintenance",
         "off"
     )
 
-
-    new="off" if old=="on" else "on"
-
+    new = "off" if old == "on" else "on"
 
     await set_setting(
         pool,
@@ -306,43 +427,67 @@ async def toggle(call:CallbackQuery):
         new
     )
 
-
     await call.answer(
-        f"Maintenance {new}"
+        f"Maintenance {new.upper()}",
+        show_alert=True
     )
 
+    await maintenance_menu(call)
 
 
-@router.callback_query(F.data=="set_maint_text")
-async def maint_text(call:CallbackQuery,state:FSMContext):
+# =========================
+# SET MAINTENANCE MESSAGE
+# =========================
 
+@router.callback_query(F.data == "set_maint_text")
+async def maint_text(
+    call: CallbackQuery,
+    state: FSMContext
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.clear()
     await state.set_state(
         MaintenanceState.waiting_text
     )
 
-
     await call.message.answer(
-        "Kirim pesan maintenance"
+        (
+            "✏️ <b>UBAH PESAN MAINTENANCE</b>\n\n"
+            "Silakan kirim pesan baru."
+        ),
+        parse_mode="HTML"
     )
 
+    await call.answer()
 
 
 @router.message(MaintenanceState.waiting_text)
-async def save_maint(message:Message,state:FSMContext):
+async def save_maint(
+    message: Message,
+    state: FSMContext
+):
 
-    pool=await get_pool()
+    text = (message.text or "").strip()
+
+    if not text:
+        return await message.answer(
+            "❌ Pesan tidak boleh kosong."
+        )
+
+    pool = await get_pool()
 
     await set_setting(
         pool,
         "maintenance_text",
-        message.text
+        text
     )
-
 
     await message.answer(
-        "✅ Pesan disimpan"
+        "✅ Pesan maintenance berhasil disimpan."
     )
-
 
     await state.clear()
 
@@ -352,11 +497,40 @@ async def save_maint(message:Message,state:FSMContext):
 # SCHEDULER
 # =========================
 
-@router.callback_query(F.data=="set_scheduler")
-async def scheduler_menu(call:CallbackQuery):
+@router.callback_query(F.data == "set_scheduler")
+async def scheduler_menu(call: CallbackQuery):
 
-    kb=InlineKeyboardMarkup(
+    if not is_admin(call.from_user.id):
+        return await call.answer(
+            "❌ Tidak memiliki akses",
+            show_alert=True
+        )
+
+    pool = await get_pool()
+
+    status = await get_setting(
+        pool,
+        "scheduler",
+        "off"
+    )
+
+    jam = await get_setting(
+        pool,
+        "schedule_time",
+        "09:00"
+    )
+
+    status_text = "🟢 ON" if status == "on" else "🔴 OFF"
+
+    kb = InlineKeyboardMarkup(
         inline_keyboard=[
+
+            [
+                InlineKeyboardButton(
+                    text=status_text,
+                    callback_data="toggle_scheduler"
+                )
+            ],
 
             [
                 InlineKeyboardButton(
@@ -370,143 +544,238 @@ async def scheduler_menu(call:CallbackQuery):
                     text="📝 Set Pesan",
                     callback_data="set_text"
                 )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    text="⬅ Kembali",
+                    callback_data="admin_settings"
+                )
             ]
 
         ]
     )
 
-
     await call.message.edit_text(
-        "⏰ Scheduler",
+        (
+            "⏰ <b>SCHEDULER</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+            f"Status : <b>{status_text}</b>\n"
+            f"Jam : <code>{jam}</code>"
+        ),
+        parse_mode="HTML",
         reply_markup=kb
     )
 
+    await call.answer()
 
 
-@router.callback_query(F.data=="set_time")
-async def set_time(call:CallbackQuery,state:FSMContext):
+# =========================
+# TOGGLE SCHEDULER
+# =========================
 
+@router.callback_query(F.data == "toggle_scheduler")
+async def toggle_scheduler(call: CallbackQuery):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    pool = await get_pool()
+
+    old = await get_setting(
+        pool,
+        "scheduler",
+        "off"
+    )
+
+    new = "off" if old == "on" else "on"
+
+    await set_setting(
+        pool,
+        "scheduler",
+        new
+    )
+
+    await call.answer(
+        f"Scheduler {new.upper()}",
+        show_alert=True
+    )
+
+    await scheduler_menu(call)
+
+
+# =========================
+# SET TIME
+# =========================
+
+@router.callback_query(F.data == "set_time")
+async def set_time(
+    call: CallbackQuery,
+    state: FSMContext
+):
+
+    await state.clear()
     await state.set_state(
         SchedulerState.waiting_time
     )
 
     await call.message.answer(
-        "Format HH:MM"
+        (
+            "🕒 Kirim jam scheduler.\n\n"
+            "Format:\n"
+            "<code>09:00</code>"
+        ),
+        parse_mode="HTML"
     )
 
+    await call.answer()
 
 
 @router.message(SchedulerState.waiting_time)
-async def save_time(message:Message,state:FSMContext):
+async def save_time(
+    message: Message,
+    state: FSMContext
+):
 
-    pool=await get_pool()
+    value = (message.text or "").strip()
+
+    try:
+        datetime.strptime(value, "%H:%M")
+    except ValueError:
+        return await message.answer(
+            "❌ Format salah.\nGunakan HH:MM"
+        )
+
+    pool = await get_pool()
 
     await set_setting(
         pool,
         "schedule_time",
-        message.text
+        value
     )
 
     await message.answer(
-        "✅ Jam disimpan"
+        f"✅ Jam scheduler disimpan : <code>{value}</code>",
+        parse_mode="HTML"
     )
 
     await state.clear()
 
 
+# =========================
+# SET TEXT
+# =========================
 
-@router.callback_query(F.data=="set_text")
-async def set_text(call:CallbackQuery,state:FSMContext):
+@router.callback_query(F.data == "set_text")
+async def set_text(
+    call: CallbackQuery,
+    state: FSMContext
+):
+
+    await state.clear()
 
     await state.set_state(
         SchedulerState.waiting_text
     )
 
     await call.message.answer(
-        "Kirim pesan scheduler"
+        "📝 Kirim pesan scheduler."
     )
 
+    await call.answer()
 
 
 @router.message(SchedulerState.waiting_text)
-async def save_text(message:Message,state:FSMContext):
+async def save_text(
+    message: Message,
+    state: FSMContext
+):
 
-    pool=await get_pool()
+    text = (message.text or "").strip()
+
+    if not text:
+        return await message.answer(
+            "❌ Pesan tidak boleh kosong."
+        )
+
+    pool = await get_pool()
 
     await set_setting(
         pool,
         "schedule_text",
-        message.text
+        text
     )
 
     await message.answer(
-        "✅ Pesan disimpan"
+        "✅ Pesan scheduler berhasil disimpan."
     )
 
     await state.clear()
 
 
-
 # =========================
-# SCHEDULER WORKER
+# WORKER
 # =========================
 
-async def scheduler_loop(bot:Bot):
+async def scheduler_loop(bot: Bot):
 
-    last=None
+    last = None
 
     while True:
 
-        pool=await get_pool()
+        try:
 
+            pool = await get_pool()
 
-        enabled=await get_setting(
-            pool,
-            "scheduler",
-            "off"
-        )
-
-
-        jam=await get_setting(
-            pool,
-            "schedule_time",
-            "09:00"
-        )
-
-
-        text=await get_setting(
-            pool,
-            "schedule_text",
-            "Halo!"
-        )
-
-
-        now=datetime.now().strftime("%H:%M")
-
-
-        if enabled=="on" and now==jam and last!=now:
-
-            users=await pool.fetch(
-                "SELECT user_id FROM users"
+            enabled = await get_setting(
+                pool,
+                "scheduler",
+                "off"
             )
 
+            jam = await get_setting(
+                pool,
+                "schedule_time",
+                "09:00"
+            )
 
-            for u in users:
+            text = await get_setting(
+                pool,
+                "schedule_text",
+                "Halo!"
+            )
 
-                try:
+            now = datetime.now().astimezone().strftime("%H:%M")
 
-                    await bot.send_message(
-                        u["user_id"],
-                        text
-                    )
+            if enabled == "on" and now == jam and last != now:
 
-                    await asyncio.sleep(0.05)
+                users = await pool.fetch(
+                    """
+                    SELECT chat_id
+                    FROM users
+                    """
+                )
 
-                except:
-                    pass
+                for user in users:
 
+                    try:
 
-            last=now
+                        await bot.send_message(
+                            chat_id=user["chat_id"],
+                            text=text
+                        )
 
+                        await asyncio.sleep(0.05)
 
-        await asyncio.sleep(10)
+                    except Exception:
+                        pass
+
+                last = now
+
+            await asyncio.sleep(10)
+
+        except Exception as e:
+
+            print("Scheduler Error:", e)
+
+            await asyncio.sleep(10)
