@@ -94,7 +94,7 @@ def kb_home():
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🏠 Menu Utama",
+                    text="START",
                     callback_data="home"
                 )
             ]
