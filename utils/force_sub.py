@@ -32,32 +32,49 @@ async def check_force_sub(bot: Bot, user_id: int) -> bool:
                 user_id=user_id,
             )
 
+            logging.info(
+                "CHANNEL %s | USER %s | STATUS %s",
+                channel_id,
+                user_id,
+                member.status,
+            )
+
             if member.status not in (
                 "member",
                 "administrator",
                 "creator",
             ):
+                logging.warning(
+                    "USER %s BELUM JOIN CHANNEL %s (STATUS=%s)",
+                    user_id,
+                    channel_id,
+                    member.status,
+                )
                 return False
 
-        except TelegramBadRequest:
+        except TelegramBadRequest as e:
             logging.exception(
-                "ForceSub TelegramBadRequest | %s",
-                channel_id
+                "ForceSub TelegramBadRequest | %s | %s",
+                channel_id,
+                e,
             )
             return False
 
-        except TelegramForbiddenError:
+        except TelegramForbiddenError as e:
             logging.exception(
-                "ForceSub TelegramForbiddenError | %s",
-                channel_id
+                "ForceSub TelegramForbiddenError | %s | %s",
+                channel_id,
+                e,
             )
             return False
 
-        except Exception:
+        except Exception as e:
             logging.exception(
-                "ForceSub Unknown Error | %s",
-                channel_id
+                "ForceSub Unknown Error | %s | %s",
+                channel_id,
+                e,
             )
             return False
 
+    logging.info("USER %s LULUS FORCE SUB", user_id)
     return True
