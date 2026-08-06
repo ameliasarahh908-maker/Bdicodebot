@@ -85,55 +85,76 @@ async def process_start(message, loading, user_id, username):
 
     args = message.text.split(maxsplit=1)
 
-    if is_new_user and len(args) > 1 and args[1].startswith("ref_"):
+    # =========================
+    # REFERRAL
+    # =========================
+    if len(args) > 1 and args[1].startswith("ref_"):
 
-        ref_id = args[1].replace("ref_", "", 1)
+        if is_new_user:
 
-        if ref_id.isdigit():
+            ref_id = args[1].replace("ref_", "", 1)
 
-            ref_id = int(ref_id)
+            if ref_id.isdigit():
 
-            if ref_id != user_id:
+                ref_id = int(ref_id)
 
-                existing = await pool.fetchval(
-                    "SELECT referred_by FROM users WHERE user_id=$1",
-                    user_id
-                )
+                if ref_id != user_id:
 
-                if not existing:
-
-                    await pool.execute(
-                        """
-                        UPDATE users
-                        SET referred_by=$1
-                        WHERE user_id=$2
-                        """,
-                        ref_id,
+                    existing = await pool.fetchval(
+                        "SELECT referred_by FROM users WHERE user_id=$1",
                         user_id
                     )
 
-                    await pool.execute(
-                        """
-                        UPDATE users
-                        SET
-                            total_referral = total_referral + 1,
-                            balance = balance + 200
-                        WHERE user_id=$1
-                        """,
-                        ref_id
-                    )
+                    if not existing:
 
-                    try:
-                        await bot.send_message(
+                        await pool.execute(
+                            """
+                            UPDATE users
+                            SET referred_by=$1
+                            WHERE user_id=$2
+                            """,
                             ref_id,
-                            "🎉 <b>Referral Berhasil!</b>\n\n"
-                            "👤 Pengguna baru bergabung.\n"
-                            "💰 Bonus: <b>Rp200</b>\n\n"
-                            "Saldo otomatis bertambah.",
-                            parse_mode="HTML"
+                            user_id
                         )
-                    except:
-                        pass
+
+                        await pool.execute(
+                            """
+                            UPDATE users
+                            SET
+                                total_referral = total_referral + 1,
+                                balance = balance + 200
+                            WHERE user_id=$1
+                            """,
+                            ref_id
+                        )
+
+                        try:
+                            await bot.send_message(
+                                ref_id,
+                                "🎉 <b>Referral Berhasil!</b>\n\n"
+                                "👤 Pengguna baru bergabung.\n"
+                                "💰 Bonus: <b>Rp200</b>\n\n"
+                                "Saldo otomatis bertambah.",
+                                parse_mode="HTML"
+                            )
+                        except:
+                            pass
+
+    # =========================
+    # START DENGAN KODE
+    # =========================
+    elif len(args) > 1:
+
+        code = args[1].strip()
+
+        try:
+            await loading.delete()
+        except:
+            pass
+
+        from handlers.get_file import process_code
+
+        return await process_code(message, code)
 
     user = await pool.fetchrow(
         "SELECT username FROM users WHERE user_id=$1",
