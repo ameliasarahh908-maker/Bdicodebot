@@ -49,16 +49,9 @@ def kb_open():
                     text="📥 Buka File",
                     callback_data="getfile"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🏠 Menu Utama",
-                    callback_data="home"
-                )
             ]
         ]
     )
-
 
 
 def kb_upload():
@@ -70,17 +63,9 @@ def kb_upload():
                     text="📤 Upload File",
                     callback_data="upfile"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🏠 Menu Utama",
-                    callback_data="home"
-                )
             ]
         ]
     )
-
-
 
 def kb_channel():
 
