@@ -294,6 +294,7 @@ async def open_file_by_code(
     )
 
 
+
 # =====================================
 # RECEIVE CODE
 # =====================================
@@ -310,6 +311,22 @@ def normalize_code(code: str):
         .replace(" ", "")
         .replace("\n", "")
         .lower()
+    )
+
+async def process_code(
+    message: Message,
+    code: str
+):
+    code = normalize_code(code)
+
+    class DummyState:
+        async def clear(self):
+            pass
+
+    return await open_file_by_code(
+        message=message,
+        code=code,
+        state=DummyState()
     )
 
 
