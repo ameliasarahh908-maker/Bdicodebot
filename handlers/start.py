@@ -152,7 +152,7 @@ async def process_start(message, loading, user_id, username):
         except:
             pass
 
-        from handlers.get_file import process_code
+        from handlers.getfile import process_code
 
         return await process_code(message, code)
 
