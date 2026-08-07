@@ -349,10 +349,13 @@ async def finish_payment(
         UPDATE file_purchases
         SET status='paid'
         WHERE id=$1
-        AND status!='paid'
+        AND status='pending'
         """,
         purchase["id"]
     )
+
+    if not updated:
+        return False
 
 
     # =============================
@@ -818,6 +821,16 @@ async def check_payment(call: CallbackQuery):
         CHECK_LOCK.discard(invoice)
 
 
+@router.callback_query(F.data=="close")
+async def close_payment(call: CallbackQuery):
+
+    await call.message.delete()
+
+    await call.answer(
+        "Pembayaran dibatalkan"
+    )
+
+
 
 # ==================================================
 # MANUAL PAYMENT QR
@@ -847,6 +860,62 @@ async def manual_payment(call: CallbackQuery):
         )
 
 
+    # =============================
+    # CEK PEMBELIAN PENDING
+    # =============================
+
+    existing = await fetchrow(
+        """
+        SELECT *
+        FROM file_purchases
+        WHERE user_id=$1
+        AND file_code=$2
+        AND status='pending'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        call.from_user.id,
+        code
+    )
+
+
+    # =============================
+    # BUAT DATA PEMBELIAN
+    # =============================
+
+    if not existing:
+
+        await execute(
+            """
+            INSERT INTO file_purchases
+            (
+                user_id,
+                file_code,
+                owner_id,
+                paid_price,
+                payment_id,
+                status,
+                created_at
+            )
+            VALUES
+            (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                'pending',
+                NOW()
+            )
+            """,
+            call.from_user.id,
+            code,
+            file["owner_id"],
+            file["price"],
+            f"MANUAL-{call.from_user.id}-{code}"
+        )
+
+
     caption = (
         "📷 <b>PEMBAYARAN MANUAL</b>\n\n"
         f"📄 File : <b>{file['title']}</b>\n"
@@ -865,7 +934,9 @@ async def manual_payment(call: CallbackQuery):
     )
 
 
-    await call.answer()
+    await call.answer(
+        "Silahkan lakukan pembayaran"
+    )
 
 
 
@@ -897,12 +968,39 @@ async def manual_check(call: CallbackQuery):
         )
 
 
+    # =============================
+    # CEK PEMBELIAN PENDING
+    # =============================
+
+    purchase = await fetchrow(
+        """
+        SELECT *
+        FROM file_purchases
+        WHERE user_id=$1
+        AND file_code=$2
+        AND status='pending'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        call.from_user.id,
+        code
+    )
+
+
+    if not purchase:
+
+        return await call.answer(
+            "Transaksi tidak ditemukan. Silahkan ulangi pembayaran.",
+            show_alert=True
+        )
+
+
     text = (
         "📥 <b>MANUAL PAYMENT CHECK</b>\n\n"
         f"👤 User: <code>{call.from_user.id}</code>\n"
         f"📄 File: <b>{file['title']}</b>\n"
         f"🔑 Code: <code>{code}</code>\n"
-        f"💰 Harga: Rp {file['price']:,}"
+        f"💰 Harga: Rp {purchase['paid_price']:,}"
     ).replace(",", ".")
 
 
@@ -943,7 +1041,7 @@ async def manual_check(call: CallbackQuery):
 
 
     await call.message.answer(
-        "✅ Permintaan cek pembayaran dikirim ke admin."
+        "✅ Permintaan verifikasi pembayaran dikirim ke admin."
     )
 
 
@@ -962,12 +1060,17 @@ async def approve_manual(call: CallbackQuery):
     user_id = int(user_id)
 
 
+    # =============================
+    # AMBIL PEMBELIAN PENDING
+    # =============================
+
     purchase = await fetchrow(
         """
         SELECT *
         FROM file_purchases
         WHERE user_id=$1
         AND file_code=$2
+        AND status='pending'
         ORDER BY id DESC
         LIMIT 1
         """,
@@ -979,15 +1082,7 @@ async def approve_manual(call: CallbackQuery):
     if not purchase:
 
         return await call.answer(
-            "❌ Pembelian tidak ditemukan",
-            show_alert=True
-        )
-
-
-    if purchase["status"] == "paid":
-
-        return await call.answer(
-            "✅ Sudah dikonfirmasi",
+            "❌ Pembelian pending tidak ditemukan",
             show_alert=True
         )
 
@@ -1010,13 +1105,40 @@ async def approve_manual(call: CallbackQuery):
         )
 
 
-    await finish_payment(
-        call.bot,
-        purchase,
-        file,
-        purchase["payment_id"],
-        call.message
-    )
+    # =============================
+    # FINISH PAYMENT
+    # =============================
+
+    try:
+        user_message = await call.bot.send_message(
+            user_id,
+            "⏳ Pembayaran sedang diproses..."
+        )
+
+    except:
+        user_message = call.message
+
+
+        await finish_payment(
+            call.bot,
+            purchase,
+            file,
+            purchase["payment_id"],
+            user_message
+        )
+
+
+    except Exception:
+
+        logger.exception(
+            "APPROVE MANUAL ERROR"
+        )
+
+
+        return await call.answer(
+            "❌ Gagal memproses pembayaran",
+            show_alert=True
+        )
 
 
     await call.answer(
@@ -1024,18 +1146,21 @@ async def approve_manual(call: CallbackQuery):
     )
 
 
+    # =============================
+    # UPDATE PESAN ADMIN
+    # =============================
+
     try:
 
-        await call.bot.send_message(
-            user_id,
+        await call.message.edit_text(
             (
-                "✅ <b>Pembayaran Manual Berhasil</b>\n\n"
-                "Admin sudah mengkonfirmasi pembayaran.\n"
-                "File siap dikirim."
+                "✅ <b>PEMBAYARAN DISETUJUI</b>\n\n"
+                f"👤 User: <code>{user_id}</code>\n"
+                f"📦 File: <b>{file['title']}</b>\n"
+                f"🔑 Code: <code>{code}</code>"
             ),
             parse_mode="HTML"
         )
-
 
     except Exception:
 
