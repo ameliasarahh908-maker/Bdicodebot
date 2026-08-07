@@ -1518,7 +1518,12 @@ async def media_page(call: CallbackQuery):
     await call.answer()
 
 
-# TEMP: ambil file_id QR manual
 @router.message(F.photo)
 async def get_photo_id(message):
-    print("PHOTO ID:", message.photo[-1].file_id)
+    file_id = message.photo[-1].file_id
+    print("MANUAL QR FILE ID:", file_id)
+
+    await message.answer(
+        f"FILE ID:\n<code>{file_id}</code>",
+        parse_mode="HTML"
+    )
