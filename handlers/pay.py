@@ -183,7 +183,7 @@ def payment_check_keyboard(invoice):
 
 
 def media_keyboard(
-    invoice,
+    media_id,
     page,
     total
 ):
@@ -195,7 +195,6 @@ def media_keyboard(
 
     buttons = []
 
-
     nav = []
 
 
@@ -203,7 +202,7 @@ def media_keyboard(
         nav.append(
             InlineKeyboardButton(
                 text="⬅️",
-                callback_data=f"mp:{page-1}:{invoice[-10:]}"
+                callback_data=f"mp:{media_id}:{page-1}"
             )
         )
 
@@ -220,7 +219,7 @@ def media_keyboard(
         nav.append(
             InlineKeyboardButton(
                 text="➡️",
-                callback_data=f"mp:{page+1}:{invoice[-10:]}"
+                callback_data=f"mp:{media_id}:{page+1}"
             )
         )
 
@@ -232,7 +231,7 @@ def media_keyboard(
         [
             InlineKeyboardButton(
                 text="📤 Kirim Halaman",
-                callback_data=f"sp:{invoice[-10:]}:{page}"
+                callback_data=f"sp:{media_id}:{page}"
             )
         ]
     )
@@ -242,7 +241,7 @@ def media_keyboard(
         [
             InlineKeyboardButton(
                 text="📦 Kirim Semua",
-                callback_data=f"sa:{invoice[-10:]}"
+                callback_data=f"sa:{media_id}"
             )
         ]
     )
@@ -272,7 +271,6 @@ async def finish_payment(
 
 
     if purchase["status"] == "paid":
-
         return False
 
 
@@ -287,14 +285,11 @@ async def finish_payment(
     if isinstance(media_data, str):
 
         try:
-            media_list = json.loads(
-                media_data
-            )
+            media_list = json.loads(media_data)
 
         except Exception:
 
             media_list = []
-
 
     else:
 
@@ -322,10 +317,10 @@ async def finish_payment(
 
 
     # =============================
-    # SAVE MEDIA REDIS
+    # CREATE MEDIA SESSION
     # =============================
 
-    media_id = secrets.token_hex(5)
+    media_id = secrets.token_hex(8)
 
 
     await safe_set(
@@ -341,7 +336,7 @@ async def finish_payment(
 
 
     # =============================
-    # LOCK PAYMENT
+    # UPDATE PAYMENT
     # =============================
 
     updated = await execute(
@@ -357,12 +352,16 @@ async def finish_payment(
 
     if not updated:
 
+        await safe_delete(
+            f"paidmedia:{media_id}"
+        )
+
         return False
 
 
 
     # =============================
-    # BUY COUNT
+    # UPDATE BUY COUNT
     # =============================
 
     await execute(
@@ -410,12 +409,11 @@ async def finish_payment(
         """
         INSERT INTO transactions
         (
-        user_id,
-        type,
-        amount,
-        description
+            user_id,
+            type,
+            amount,
+            description
         )
-
         VALUES
         ($1,$2,$3,$4)
         """,
@@ -428,7 +426,7 @@ async def finish_payment(
 
 
     # =============================
-    # VIP / VVIP DETECT
+    # VIP / VVIP
     # =============================
 
     code_lower = file["code"].lower()
@@ -476,17 +474,14 @@ async def finish_payment(
         )
 
 
-        text = (
-            "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
-            f"📄 Judul: <b>{file['title']}</b>\n"
-            f"📁 Code: <code>{file['code']}</code>\n"
-            f"👤 User: <code>{masked}</code>"
-        )
-
-
         await bot.send_message(
             NOTIF_CHANNEL_ID,
-            text,
+            (
+                "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
+                f"📄 Judul: <b>{file['title']}</b>\n"
+                f"📁 Code: <code>{file['code']}</code>\n"
+                f"👤 User: <code>{masked}</code>"
+            ),
             parse_mode="HTML",
             reply_markup=keyboard
         )
@@ -507,8 +502,8 @@ async def finish_payment(
     try:
 
         if (
-            purchase["qr_message_id"]
-            and purchase["qr_chat_id"]
+            purchase.get("qr_message_id")
+            and purchase.get("qr_chat_id")
         ):
 
             await bot.delete_message(
@@ -1081,13 +1076,14 @@ async def approve_manual(call: CallbackQuery):
     if not purchase:
 
         return await call.answer(
-            "❌ Pembelian pending tidak ditemukan",
+            "❌ Pembelian tidak ditemukan / sudah diproses",
             show_alert=True
         )
 
 
     user_id = purchase["user_id"]
     code = purchase["file_code"]
+
 
 
     # =============================
@@ -1112,25 +1108,43 @@ async def approve_manual(call: CallbackQuery):
         )
 
 
+
+    await call.answer(
+        "⏳ Memproses pembayaran..."
+    )
+
+
+
     # =============================
-    # PROSES PEMBAYARAN
+    # KIRIM PESAN KE USER
     # =============================
 
     try:
 
-        try:
-
-            user_message = await call.bot.send_message(
-                user_id,
-                "⏳ Pembayaran sedang diproses..."
-            )
+        user_message = await call.bot.send_message(
+            user_id,
+            "⏳ Pembayaran sedang diproses..."
+        )
 
 
-        except Exception:
+    except Exception:
 
-            user_message = call.message
+        logger.exception(
+            "USER MESSAGE ERROR"
+        )
+
+        return await call.answer(
+            "❌ User belum pernah membuka bot",
+            show_alert=True
+        )
 
 
+
+    # =============================
+    # FINISH PAYMENT
+    # =============================
+
+    try:
 
         success = await finish_payment(
             call.bot,
@@ -1144,7 +1158,7 @@ async def approve_manual(call: CallbackQuery):
         if not success:
 
             return await call.answer(
-                "❌ Gagal menyelesaikan pembayaran",
+                "❌ Pembayaran gagal diproses",
                 show_alert=True
             )
 
@@ -1152,67 +1166,13 @@ async def approve_manual(call: CallbackQuery):
     except Exception:
 
         logger.exception(
-            "APPROVE MANUAL ERROR"
+            "APPROVE FINISH ERROR"
         )
 
         return await call.answer(
             "❌ Error proses pembayaran",
             show_alert=True
         )
-
-
-
-    # =============================
-    # NOTIF CHANNEL
-    # =============================
-
-    try:
-
-        masked = mask_user_id(
-            user_id
-        )
-
-
-        text = (
-            "✅ <b>MANUAL PAYMENT APPROVED</b>\n\n"
-            f"📄 File : <b>{file['title']}</b>\n"
-            f"🔑 Code : <code>{code}</code>\n"
-            f"👤 User : <code>{masked}</code>\n"
-            f"💰 Harga : Rp {purchase['paid_price']:,}"
-        ).replace(",", ".")
-
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🛒 Buy Now",
-                        url=f"https://t.me/mktplbot?start={code}"
-                    )
-                ]
-            ]
-        )
-
-
-        await call.bot.send_message(
-            NOTIF_CHANNEL_ID,
-            text,
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-
-
-    except Exception:
-
-        logger.exception(
-            "CHANNEL NOTIF APPROVE ERROR"
-        )
-
-
-
-    await call.answer(
-        "✅ Pembayaran dikonfirmasi"
-    )
 
 
 
@@ -1399,19 +1359,26 @@ async def send_page_media(call: CallbackQuery):
         )
 
 
-    media_list = data["media"]
+    media_list = data.get("media", [])
 
 
     start = (page - 1) * PER_PAGE
-
     end = start + PER_PAGE
 
 
     items = media_list[start:end]
 
 
+    if not items:
+
+        return await call.answer(
+            "❌ Halaman tidak ditemukan",
+            show_alert=True
+        )
+
+
     await call.answer(
-        f"📤 Mengirim halaman {page}"
+        "📤 Mengirim file..."
     )
 
 
@@ -1428,7 +1395,6 @@ async def send_page_media(call: CallbackQuery):
                 message_id=item["message_id"]
             )
 
-
             sent += 1
 
 
@@ -1443,9 +1409,11 @@ async def send_page_media(call: CallbackQuery):
     await call.message.answer(
         (
             f"✅ Halaman {page} selesai\n\n"
-            f"📦 Terkirim: {sent} file"
+            f"📦 Terkirim: {sent}/{len(items)} file"
         )
     )
+
+
 
 # ==================================================
 # SEND ALL MEDIA
@@ -1470,7 +1438,15 @@ async def send_all_media(call: CallbackQuery):
         )
 
 
-    media_list = data["media"]
+    media_list = data.get("media", [])
+
+
+    if not media_list:
+
+        return await call.answer(
+            "❌ Media kosong",
+            show_alert=True
+        )
 
 
     await call.answer(
@@ -1501,6 +1477,7 @@ async def send_all_media(call: CallbackQuery):
 
 
             sent += 1
+
 
 
             if index % 5 == 0:
@@ -1559,13 +1536,27 @@ async def media_page(call: CallbackQuery):
     if not data:
 
         return await call.answer(
-            "❌ Session expired",
+            "❌ Session media sudah expired",
+            show_alert=True
+        )
+
+
+    media_list = data.get(
+        "media",
+        []
+    )
+
+
+    if not media_list:
+
+        return await call.answer(
+            "❌ Media tidak ditemukan",
             show_alert=True
         )
 
 
     total = len(
-        data["media"]
+        media_list
     )
 
 
