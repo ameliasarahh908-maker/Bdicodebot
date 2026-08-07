@@ -541,7 +541,40 @@ async def finish_payment(
 
     return True
 
+@router.callback_query(F.data.startswith("pay:"))
+async def choose_payment(call: CallbackQuery):
 
+    code = call.data.split(":")[1]
+
+    file = await fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE code=$1
+        """,
+        code
+    )
+
+    if not file:
+        return await call.answer(
+            "File tidak ditemukan",
+            show_alert=True
+        )
+
+
+    await call.message.edit_text(
+        (
+            "💳 <b>PILIH PEMBAYARAN</b>\n\n"
+            f"📦 File: <b>{file['title']}</b>\n"
+            f"💰 Harga: Rp {file['price']:,}\n\n"
+            "Silahkan pilih metode pembayaran."
+        ).replace(",", "."),
+        parse_mode="HTML",
+        reply_markup=payment_method_keyboard(code)
+    )
+
+    await call.answer()
+    
 
 # ==================================================
 # AUTO PAYMENT QRIS
