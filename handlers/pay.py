@@ -1110,13 +1110,16 @@ async def approve_manual(call: CallbackQuery):
     # =============================
 
     try:
-        user_message = await call.bot.send_message(
-            user_id,
-            "⏳ Pembayaran sedang diproses..."
-        )
 
-    except:
-        user_message = call.message
+        try:
+            user_message = await call.bot.send_message(
+                user_id,
+                "⏳ Pembayaran sedang diproses..."
+            )
+
+        except Exception:
+
+            user_message = call.message
 
 
         await finish_payment(
@@ -1133,7 +1136,6 @@ async def approve_manual(call: CallbackQuery):
         logger.exception(
             "APPROVE MANUAL ERROR"
         )
-
 
         return await call.answer(
             "❌ Gagal memproses pembayaran",
