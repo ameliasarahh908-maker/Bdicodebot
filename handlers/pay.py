@@ -1009,13 +1009,13 @@ async def manual_check(call: CallbackQuery):
             [
                 InlineKeyboardButton(
                     text="✅ Approve",
-                    callback_data=f"approve:{call.from_user.id}:{code}"
+                    callback_data=f"approve:{purchase['id']}"
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="❌ Reject",
-                    callback_data=f"reject:{call.from_user.id}:{code}"
+                    callback_data=f"reject:{purchase['id']}"
                 )
             ]
         ]
@@ -1055,27 +1055,23 @@ async def manual_check(call: CallbackQuery):
 @router.callback_query(F.data.startswith("approve:"))
 async def approve_manual(call: CallbackQuery):
 
-    _, user_id, code = call.data.split(":")
+    _, purchase_id = call.data.split(":")
 
-    user_id = int(user_id)
+    purchase_id = int(purchase_id)
 
 
     # =============================
-    # AMBIL PEMBELIAN PENDING
+    # AMBIL PEMBELIAN
     # =============================
 
     purchase = await fetchrow(
         """
         SELECT *
         FROM file_purchases
-        WHERE user_id=$1
-        AND file_code=$2
+        WHERE id=$1
         AND status='pending'
-        ORDER BY id DESC
-        LIMIT 1
         """,
-        user_id,
-        code
+        purchase_id
     )
 
 
@@ -1086,6 +1082,14 @@ async def approve_manual(call: CallbackQuery):
             show_alert=True
         )
 
+
+    user_id = purchase["user_id"]
+    code = purchase["file_code"]
+
+
+    # =============================
+    # AMBIL FILE
+    # =============================
 
     file = await fetchrow(
         """
@@ -1106,29 +1110,40 @@ async def approve_manual(call: CallbackQuery):
 
 
     # =============================
-    # FINISH PAYMENT
+    # PROSES PEMBAYARAN
     # =============================
 
     try:
 
         try:
+
             user_message = await call.bot.send_message(
                 user_id,
                 "⏳ Pembayaran sedang diproses..."
             )
+
 
         except Exception:
 
             user_message = call.message
 
 
-        await finish_payment(
+
+        success = await finish_payment(
             call.bot,
             purchase,
             file,
             purchase["payment_id"],
             user_message
         )
+
+
+        if not success:
+
+            return await call.answer(
+                "❌ Gagal menyelesaikan pembayaran",
+                show_alert=True
+            )
 
 
     except Exception:
@@ -1138,14 +1153,64 @@ async def approve_manual(call: CallbackQuery):
         )
 
         return await call.answer(
-            "❌ Gagal memproses pembayaran",
+            "❌ Error proses pembayaran",
             show_alert=True
         )
+
+
+
+    # =============================
+    # NOTIF CHANNEL
+    # =============================
+
+    try:
+
+        masked = mask_user_id(
+            user_id
+        )
+
+
+        text = (
+            "✅ <b>MANUAL PAYMENT APPROVED</b>\n\n"
+            f"📄 File : <b>{file['title']}</b>\n"
+            f"🔑 Code : <code>{code}</code>\n"
+            f"👤 User : <code>{masked}</code>\n"
+            f"💰 Harga : Rp {purchase['paid_price']:,}"
+        ).replace(",", ".")
+
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛒 Buy Now",
+                        url=f"https://t.me/mktplbot?start={code}"
+                    )
+                ]
+            ]
+        )
+
+
+        await call.bot.send_message(
+            NOTIF_CHANNEL_ID,
+            text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+    except Exception:
+
+        logger.exception(
+            "CHANNEL NOTIF APPROVE ERROR"
+        )
+
 
 
     await call.answer(
         "✅ Pembayaran dikonfirmasi"
     )
+
 
 
     # =============================
@@ -1164,11 +1229,10 @@ async def approve_manual(call: CallbackQuery):
             parse_mode="HTML"
         )
 
+
     except Exception:
 
         pass
-
-
 
 # ==================================================
 # REJECT MANUAL PAYMENT
