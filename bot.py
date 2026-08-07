@@ -45,7 +45,7 @@ dp.callback_query.middleware(
 # =========================
 # ROUTERS IMPORT
 # =========================
-from handlers import get_file_id
+
 from handlers.start import router as start_router
 from handlers.check_sub import router as check_sub_router
 
@@ -88,7 +88,6 @@ from handlers.marketplace import router as marketplace_router
 # =========================
 # REGISTER ROUTERS
 # =========================
-dp.include_router(get_file_id.router)
 # BASIC
 dp.include_router(start_router)
 dp.include_router(check_sub_router)
