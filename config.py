@@ -33,6 +33,19 @@ BAYARGG_MERCHANT = os.getenv("BAYARGG_MERCHANT")
 BAYARGG_WEBHOOK_SECRET = os.getenv("BAYARGG_WEBHOOK_SECRET")
 
 # =========================
+# MANUAL QR PAYMENT
+# =========================
+MANUAL_QR_FILE_ID = os.getenv(
+    "MANUAL_QR_FILE_ID",
+    "AgACAgUAAxkBAAKEv2p1r2DLEtZexB8c3zcoBn5pmffnAAILFGsb10WhV0rrpqQNiZuOAQADAgADeAADPQQ"
+)
+
+MANUAL_PAYMENT_NAME = os.getenv(
+    "MANUAL_PAYMENT_NAME",
+    "QRIS Manual"
+)
+
+# =========================
 # CHANNEL
 # =========================
 CHANNEL_ID = int(
@@ -42,7 +55,9 @@ CHANNEL_ID = int(
 GROUP_ID = int(
     os.getenv("GROUP_ID", str(CHANNEL_ID))
 )
+
 NOTIF_CHANNEL_ID = -1004413314849
+
 # =========================
 # WITHDRAW
 # =========================
