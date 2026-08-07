@@ -11,7 +11,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     BufferedInputFile,
 )
-
+import secrets
 from database import fetchrow, execute
 from utils.redis_client import (
     safe_set,
@@ -200,11 +200,10 @@ def media_keyboard(
 
 
     if page > 1:
-
         nav.append(
             InlineKeyboardButton(
                 text="⬅️",
-                callback_data=f"mpage:{invoice}:{page-1}"
+                callback_data=f"mp:{page-1}:{invoice[-10:]}"
             )
         )
 
@@ -218,11 +217,10 @@ def media_keyboard(
 
 
     if page < max_page:
-
         nav.append(
             InlineKeyboardButton(
                 text="➡️",
-                callback_data=f"mpage:{invoice}:{page+1}"
+                callback_data=f"mp:{page+1}:{invoice[-10:]}"
             )
         )
 
@@ -234,7 +232,7 @@ def media_keyboard(
         [
             InlineKeyboardButton(
                 text="📤 Kirim Halaman",
-                callback_data=f"sendpage:{invoice}:{page}"
+                callback_data=f"sp:{invoice[-10:]}:{page}"
             )
         ]
     )
@@ -244,7 +242,7 @@ def media_keyboard(
         [
             InlineKeyboardButton(
                 text="📦 Kirim Semua",
-                callback_data=f"sendall:{invoice}"
+                callback_data=f"sa:{invoice[-10:]}"
             )
         ]
     )
@@ -253,8 +251,6 @@ def media_keyboard(
     return InlineKeyboardMarkup(
         inline_keyboard=buttons
     )
-
-
 
 # ==================================================
 # FINISH PAYMENT CORE
@@ -295,7 +291,7 @@ async def finish_payment(
                 media_data
             )
 
-        except:
+        except Exception:
 
             media_list = []
 
@@ -329,11 +325,15 @@ async def finish_payment(
     # SAVE MEDIA REDIS
     # =============================
 
+    media_id = secrets.token_hex(5)
+
+
     await safe_set(
-        f"paidmedia:{invoice}",
+        f"paidmedia:{media_id}",
         {
             "media": media_list,
-            "share_media": file["share_media"]
+            "share_media": file["share_media"],
+            "invoice": invoice
         },
         ex=MEDIA_TTL
     )
@@ -354,8 +354,11 @@ async def finish_payment(
         purchase["id"]
     )
 
+
     if not updated:
+
         return False
+
 
 
     # =============================
@@ -416,12 +419,12 @@ async def finish_payment(
         VALUES
         ($1,$2,$3,$4)
         """,
-
         file["owner_id"],
         "file_sale",
         income,
         f"Pendapatan file {file['code']}"
     )
+
 
 
     # =============================
@@ -535,7 +538,7 @@ async def finish_payment(
         ),
         parse_mode="HTML",
         reply_markup=media_keyboard(
-            invoice,
+            media_id,
             1,
             total
         )
@@ -1375,16 +1378,16 @@ async def cancel_payment(call: CallbackQuery):
 # SEND PAGE MEDIA
 # ==================================================
 
-@router.callback_query(F.data.startswith("sendpage:"))
+@router.callback_query(F.data.startswith("sp:"))
 async def send_page_media(call: CallbackQuery):
 
-    _, invoice, page = call.data.split(":")
+    _, media_id, page = call.data.split(":")
 
     page = int(page)
 
 
     data = await safe_get(
-        f"paidmedia:{invoice}"
+        f"paidmedia:{media_id}"
     )
 
 
@@ -1444,20 +1447,18 @@ async def send_page_media(call: CallbackQuery):
         )
     )
 
-
-
 # ==================================================
 # SEND ALL MEDIA
 # ==================================================
 
-@router.callback_query(F.data.startswith("sendall:"))
+@router.callback_query(F.data.startswith("sa:"))
 async def send_all_media(call: CallbackQuery):
 
-    invoice = call.data.split(":")[1]
+    _, media_id = call.data.split(":")
 
 
     data = await safe_get(
-        f"paidmedia:{invoice}"
+        f"paidmedia:{media_id}"
     )
 
 
@@ -1510,7 +1511,7 @@ async def send_all_media(call: CallbackQuery):
                         f"⏳ Mengirim {index}/{len(media_list)}"
                     )
 
-                except:
+                except Exception:
 
                     pass
 
@@ -1534,26 +1535,24 @@ async def send_all_media(call: CallbackQuery):
         )
 
 
-    except:
+    except Exception:
 
         pass
-
-
 
 # ==================================================
 # MEDIA PAGE NAVIGATION
 # ==================================================
 
-@router.callback_query(F.data.startswith("mpage:"))
+@router.callback_query(F.data.startswith("mp:"))
 async def media_page(call: CallbackQuery):
 
-    _, invoice, page = call.data.split(":")
+    _, media_id, page = call.data.split(":")
 
     page = int(page)
 
 
     data = await safe_get(
-        f"paidmedia:{invoice}"
+        f"paidmedia:{media_id}"
     )
 
 
@@ -1572,7 +1571,7 @@ async def media_page(call: CallbackQuery):
 
     await call.message.edit_reply_markup(
         reply_markup=media_keyboard(
-            invoice,
+            media_id,
             page,
             total
         )
@@ -1580,4 +1579,3 @@ async def media_page(call: CallbackQuery):
 
 
     await call.answer()
-
