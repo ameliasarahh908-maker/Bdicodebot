@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import qrcode
@@ -11,87 +10,204 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     BufferedInputFile,
-    InputMediaPhoto,
-    InputMediaVideo,
-    InputMediaDocument
 )
 
-from utils.redis_client import safe_set, safe_get, safe_delete
 from database import fetchrow, execute
+from utils.redis_client import (
+    safe_set,
+    safe_get,
+    safe_delete
+)
+
 from utils.bayargg import BayarGG
-from config import STORAGE_CHANNEL_ID, NOTIF_CHANNEL_ID
+
+from config import (
+    STORAGE_CHANNEL_ID,
+    NOTIF_CHANNEL_ID,
+    ADMIN_IDS,
+    MANUAL_QR_FILE_ID
+)
 
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
-def mask_user_id(user_id: int) -> str:
+
+# ==================================================
+# CONFIG
+# ==================================================
+
+PAY_LOCK_TTL = 30
+MEDIA_TTL = 3600
+
+PER_PAGE = 10
+
+CHECK_LOCK = set()
+
+
+
+# ==================================================
+# HELPER
+# ==================================================
+
+def mask_user_id(user_id: int):
+
     uid = str(user_id)
 
     if len(uid) <= 4:
         return "****"
 
-    return uid[:2] + "****" + uid[-2:]
+    return (
+        uid[:2]
+        + "****"
+        + uid[-2:]
+    )
 
-async def send_upgrade_notif(bot, user_id: int, tier: str):
+
+
+async def send_upgrade_notif(
+    bot,
+    user_id,
+    tier
+):
+
     try:
+
         masked = mask_user_id(user_id)
 
+
         if tier.lower() == "vip":
+
             text = (
                 "🌟 <b>VIP UPGRADE</b>\n\n"
                 f"👤 User: <code>{masked}</code>\n"
                 "📦 Paket: VIP"
             )
 
+
         elif tier.lower() == "vvip":
+
             text = (
                 "👑 <b>VVIP UPGRADE</b>\n\n"
                 f"👤 User: <code>{masked}</code>\n"
                 "📦 Paket: VVIP"
             )
 
+
         else:
             return
 
+
+
         await bot.send_message(
-            chat_id=NOTIF_CHANNEL_ID,
-            text=text,
+            NOTIF_CHANNEL_ID,
+            text,
             parse_mode="HTML"
         )
 
+
     except Exception:
-        logger.exception("UPGRADE NOTIF ERROR")
 
-PAY_LOCK_TTL = 30
-INVOICE_TTL = 3600
-
-CHECK_LOCK = set()
+        logger.exception(
+            "UPGRADE NOTIF ERROR"
+        )
 
 
-# =========================
-# MEDIA PAGINATION
-# =========================
 
-PER_PAGE = 10
+# ==================================================
+# KEYBOARD
+# ==================================================
+
+def payment_method_keyboard(code):
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⚡ Bayar Otomatis",
+                    callback_data=f"auto:{code}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📷 Bayar Manual",
+                    callback_data=f"manual:{code}"
+                )
+            ]
+        ]
+    )
 
 
-def media_keyboard(invoice, page, total):
 
-    max_page = (total + PER_PAGE - 1) // PER_PAGE
+def manual_payment_keyboard(code):
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Saya Sudah Bayar",
+                    callback_data=f"manualcheck:{code}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Batal",
+                    callback_data="close"
+                )
+            ]
+        ]
+    )
+
+
+
+def payment_check_keyboard(invoice):
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Cek Pembayaran",
+                    callback_data=f"check:{invoice}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Batalkan",
+                    callback_data=f"cancel:{invoice}"
+                )
+            ]
+        ]
+    )
+
+
+
+def media_keyboard(
+    invoice,
+    page,
+    total
+):
+
+    max_page = (
+        total + PER_PAGE - 1
+    ) // PER_PAGE
+
 
     buttons = []
 
+
     nav = []
 
+
     if page > 1:
+
         nav.append(
             InlineKeyboardButton(
                 text="⬅️",
                 callback_data=f"mpage:{invoice}:{page-1}"
             )
         )
+
 
     nav.append(
         InlineKeyboardButton(
@@ -100,7 +216,9 @@ def media_keyboard(invoice, page, total):
         )
     )
 
+
     if page < max_page:
+
         nav.append(
             InlineKeyboardButton(
                 text="➡️",
@@ -108,7 +226,9 @@ def media_keyboard(invoice, page, total):
             )
         )
 
+
     buttons.append(nav)
+
 
     buttons.append(
         [
@@ -119,6 +239,7 @@ def media_keyboard(invoice, page, total):
         ]
     )
 
+
     buttons.append(
         [
             InlineKeyboardButton(
@@ -128,42 +249,497 @@ def media_keyboard(invoice, page, total):
         ]
     )
 
+
     return InlineKeyboardMarkup(
         inline_keyboard=buttons
     )
 
 
-@router.callback_query(F.data.startswith("pay:"))
+
+# ==================================================
+# FINISH PAYMENT CORE
+# ==================================================
+
+async def finish_payment(
+    bot,
+    purchase,
+    file,
+    invoice,
+    message
+):
+
+    """
+    Semua pembayaran masuk sini:
+    - QRIS
+    - Manual Admin
+    """
+
+
+    if purchase["status"] == "paid":
+
+        return False
+
+
+
+    # =============================
+    # MEDIA PARSE
+    # =============================
+
+    media_data = file["media"]
+
+
+    if isinstance(media_data, str):
+
+        try:
+            media_list = json.loads(
+                media_data
+            )
+
+        except:
+
+            media_list = []
+
+
+    else:
+
+        media_list = media_data or []
+
+
+
+    media_list = [
+        x
+        for x in media_list
+        if isinstance(x, dict)
+        and x.get("message_id")
+    ]
+
+
+
+    if not media_list:
+
+        await message.answer(
+            "❌ Media kosong"
+        )
+
+        return False
+
+
+
+    # =============================
+    # SAVE MEDIA REDIS
+    # =============================
+
+    await safe_set(
+        f"paidmedia:{invoice}",
+        {
+            "media": media_list,
+            "share_media": file["share_media"]
+        },
+        ex=MEDIA_TTL
+    )
+
+
+
+    # =============================
+    # LOCK PAYMENT
+    # =============================
+
+    updated = await execute(
+        """
+        UPDATE file_purchases
+        SET status='paid'
+        WHERE id=$1
+        AND status!='paid'
+        """,
+        purchase["id"]
+    )
+
+
+    # =============================
+    # BUY COUNT
+    # =============================
+
+    await execute(
+        """
+        UPDATE files
+        SET buy_count =
+        COALESCE(buy_count,0)+1
+        WHERE code=$1
+        """,
+        file["code"]
+    )
+
+
+
+    # =============================
+    # SELLER PROFIT
+    # =============================
+
+    price = file["price"] or 0
+
+    income = int(
+        price * 0.5
+    )
+
+
+    await execute(
+        """
+        UPDATE users
+        SET
+        balance =
+        COALESCE(balance,0)+$1,
+
+        total_earn =
+        COALESCE(total_earn,0)+$1
+
+        WHERE chat_id=$2
+        """,
+        income,
+        file["owner_id"]
+    )
+
+
+
+    await execute(
+        """
+        INSERT INTO transactions
+        (
+        user_id,
+        type,
+        amount,
+        description
+        )
+
+        VALUES
+        ($1,$2,$3,$4)
+        """,
+
+        file["owner_id"],
+        "file_sale",
+        income,
+        f"Pendapatan file {file['code']}"
+    )
+
+
+    # =============================
+    # VIP / VVIP DETECT
+    # =============================
+
+    code_lower = file["code"].lower()
+
+
+    if "vvip" in code_lower:
+
+        await send_upgrade_notif(
+            bot,
+            purchase["user_id"],
+            "vvip"
+        )
+
+
+    elif "vip" in code_lower:
+
+        await send_upgrade_notif(
+            bot,
+            purchase["user_id"],
+            "vip"
+        )
+
+
+
+    # =============================
+    # NOTIF CHANNEL
+    # =============================
+
+    try:
+
+        masked = mask_user_id(
+            purchase["user_id"]
+        )
+
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🛒 Buy Now",
+                        url=f"https://t.me/mktplbot?start={file['code']}"
+                    )
+                ]
+            ]
+        )
+
+
+        text = (
+            "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
+            f"📄 Judul: <b>{file['title']}</b>\n"
+            f"📁 Code: <code>{file['code']}</code>\n"
+            f"👤 User: <code>{masked}</code>"
+        )
+
+
+        await bot.send_message(
+            NOTIF_CHANNEL_ID,
+            text,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+
+
+    except Exception:
+
+        logger.exception(
+            "NOTIF ERROR"
+        )
+
+
+
+    # =============================
+    # DELETE QR MESSAGE
+    # =============================
+
+    try:
+
+        if (
+            purchase["qr_message_id"]
+            and purchase["qr_chat_id"]
+        ):
+
+            await bot.delete_message(
+                purchase["qr_chat_id"],
+                purchase["qr_message_id"]
+            )
+
+
+    except Exception:
+
+        pass
+
+
+
+    # =============================
+    # SEND MEDIA MENU
+    # =============================
+
+    total = len(media_list)
+
+
+    await message.answer(
+        (
+            "🎉 <b>Pembayaran berhasil</b>\n\n"
+            f"📦 Total File: <b>{total}</b>\n\n"
+            "Silahkan pilih pengiriman:"
+        ),
+        parse_mode="HTML",
+        reply_markup=media_keyboard(
+            invoice,
+            1,
+            total
+        )
+    )
+
+
+    return True
+
+
+
+# ==================================================
+# AUTO PAYMENT QRIS
+# ==================================================
+
+@router.callback_query(F.data.startswith("auto:"))
 async def pay_file(call: CallbackQuery):
 
     user_id = call.from_user.id
     code = call.data.split(":")[1]
 
-    await call.answer("⏳ Membuat pembayaran...")
 
-    loading = await call.message.answer(
-        "⏳ <b>Membuat QRIS...</b>",
-        parse_mode="HTML"
+    await call.answer(
+        "⏳ Membuat pembayaran..."
     )
 
-    lock_key = f"paylock:{user_id}:{code}"
 
-    lock = await safe_set(
-        lock_key,
-        "1",
-        ex=PAY_LOCK_TTL,
-        nx=True
+    file = await fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE code=$1
+        """,
+        code
     )
 
-    if not lock:
-        await loading.delete()
+
+    if not file:
+
         return await call.answer(
-            "⏳ Tunggu sebentar",
+            "File tidak ditemukan",
             show_alert=True
         )
 
 
+    price = file["price"] or 0
+
+
+    data = await BayarGG.create_payment(
+        amount=price,
+        description=f"File {code}",
+        customer_name=call.from_user.full_name
+    )
+
+
+    if not data:
+
+        return await call.answer(
+            "Gagal membuat QRIS",
+            show_alert=True
+        )
+
+
+    invoice = data["invoice_id"]
+
+    qr_string = data["qris_string"]
+
+
+    await execute(
+        """
+        INSERT INTO file_purchases
+        (
+        user_id,
+        file_code,
+        owner_id,
+        paid_price,
+        payment_id,
+        status,
+        created_at
+        )
+        VALUES
+        ($1,$2,$3,$4,$5,'pending',NOW())
+        """,
+        user_id,
+        code,
+        file["owner_id"],
+        price,
+        invoice
+    )
+
+
+    qr = qrcode.make(
+        qr_string
+    )
+
+
+    buffer = BytesIO()
+
+    qr.save(
+        buffer,
+        "PNG"
+    )
+
+    buffer.seek(0)
+
+
+    msg = await call.message.answer_photo(
+        BufferedInputFile(
+            buffer.getvalue(),
+            filename="qris.png"
+        ),
+        caption=(
+            "💳 <b>PAYMENT QRIS</b>\n\n"
+            f"Invoice:\n<code>{invoice}</code>\n\n"
+            f"Total:\nRp {price:,}\n\n"
+            "Scan QR untuk pembayaran."
+        ).replace(",", "."),
+        parse_mode="HTML",
+        reply_markup=payment_check_keyboard(invoice)
+    )
+
+
+    await execute(
+        """
+        UPDATE file_purchases
+        SET
+        qr_message_id=$1,
+        qr_chat_id=$2
+        WHERE payment_id=$3
+        """,
+        msg.message_id,
+        msg.chat.id,
+        invoice
+    )
+
+
+# ==================================================
+# CHECK PAYMENT QRIS
+# ==================================================
+
+@router.callback_query(F.data.startswith("check:"))
+async def check_payment(call: CallbackQuery):
+
+    invoice = call.data.split(":")[1]
+
+
+    if invoice in CHECK_LOCK:
+
+        return await call.answer(
+            "⏳ Sedang diproses...",
+            show_alert=True
+        )
+
+
+    CHECK_LOCK.add(invoice)
+
+
     try:
+
+        await call.answer(
+            "🔄 Mengecek pembayaran..."
+        )
+
+
+        result = await BayarGG.check_payment(
+            invoice
+        )
+
+
+        if not result:
+
+            return await call.answer(
+                "❌ Gagal cek pembayaran",
+                show_alert=True
+            )
+
+
+        status = (
+            result.get("status")
+            or result.get("payment_status")
+        )
+
+
+        if status != "paid":
+
+            return await call.answer(
+                "⏳ Belum dibayar",
+                show_alert=True
+            )
+
+
+        purchase = await fetchrow(
+            """
+            SELECT *
+            FROM file_purchases
+            WHERE payment_id=$1
+            """,
+            invoice
+        )
+
+
+        if not purchase:
+
+            return await call.answer(
+                "Data pembayaran tidak ditemukan",
+                show_alert=True
+            )
+
 
         file = await fetchrow(
             """
@@ -171,483 +747,318 @@ async def pay_file(call: CallbackQuery):
             FROM files
             WHERE code=$1
             """,
-            code
+            purchase["file_code"]
         )
 
 
         if not file:
+
             return await call.answer(
-                "❌ File tidak ditemukan",
+                "File tidak ditemukan",
                 show_alert=True
             )
 
 
-        if not file["is_paid"]:
-            return await call.answer(
-                "File gratis",
-                show_alert=True
-            )
-
-
-        if file["owner_id"] == user_id:
-            return await call.answer(
-                "Owner tidak perlu bayar",
-                show_alert=True
-            )
-
-
-        price = file["price"] or 0
-
-
-        if price <= 0:
-            return await call.answer(
-                "Harga file tidak valid",
-                show_alert=True
-            )
-
-
-        old = await fetchrow(
-            """
-            SELECT payment_id,status
-            FROM file_purchases
-            WHERE user_id=$1
-            AND file_code=$2
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            user_id,
-            code
-        )
-
-
-        if old:
-
-            if old["status"] == "paid":
-                return await call.answer(
-                    "✅ File sudah dibeli",
-                    show_alert=True
-                )
-
-
-            if old["status"] == "pending":
-
-                invoice = old["payment_id"]
-
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="🔄 Cek Pembayaran",
-                                callback_data=f"check:{invoice}"
-                            )
-                        ],
-                        [
-                            InlineKeyboardButton(
-                                text="❌ Batalkan",
-                                callback_data=f"cancel:{invoice}"
-                            )
-                        ]
-                    ]
-                )
-
-
-                await call.message.answer(
-                    f"⚠️ <b>Pembayaran masih pending</b>\n\n"
-                    f"Invoice:\n<code>{invoice}</code>",
-                    parse_mode="HTML",
-                    reply_markup=kb
-                )
-
-                return
-
-
-
-        data = await BayarGG.create_payment(
-            amount=price,
-            description=f"File {code}",
-            customer_name=call.from_user.full_name
-        )
-
-
-        if not data:
-            return await call.answer(
-                "❌ Gagal membuat pembayaran",
-                show_alert=True
-            )
-
-
-        invoice = data.get("invoice_id")
-
-        qr_string = data.get("qris_string")
-
-
-        amount = (
-            data.get("final_amount")
-            or data.get("amount")
-            or price
-        )
-
-
-        if not invoice or not qr_string:
-            return await call.answer(
-                "❌ QRIS tidak tersedia",
-                show_alert=True
-            )
-
-
-
-        await execute(
-            """
-            INSERT INTO file_purchases
-            (
-                user_id,
-                file_code,
-                owner_id,
-                paid_price,
-                payment_id,
-                status,
-                created_at
-            )
-            VALUES
-            ($1,$2,$3,$4,$5,'pending',NOW())
-            """,
-            user_id,
-            code,
-            file["owner_id"],
-            price,
-            invoice
-        )
-
-
-        await safe_set(
-            f"invoice:{invoice}",
-            f"{user_id}:{code}",
-            ex=INVOICE_TTL
-        )
-
-
-        qr = qrcode.make(qr_string)
-
-        buf = BytesIO()
-
-        qr.save(
-            buf,
-            "PNG"
-        )
-
-        buf.seek(0)
-
-
-
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🔄 Cek Pembayaran",
-                        callback_data=f"check:{invoice}"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="❌ Batalkan",
-                        callback_data=f"cancel:{invoice}"
-                    )
-                ]
-            ]
-        )
-
-
-        try:
-            await call.message.delete()
-        except:
-            pass
-
-
-        msg = await call.message.answer_photo(
-            BufferedInputFile(
-                buf.getvalue(),
-                filename="qris.png"
-            ),
-            caption=(
-                f"💳 <b>PAYMENT QRIS</b>\n\n"
-                f"Invoice:\n<code>{invoice}</code>\n\n"
-                f"Total:\nRp {amount:,}\n\n"
-                f"Scan QR untuk membayar."
-            ).replace(",", "."),
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-
-
-        await execute(
-            """
-            UPDATE file_purchases
-            SET qr_message_id=$1,
-                qr_chat_id=$2
-            WHERE payment_id=$3
-            """,
-            msg.message_id,
-            msg.chat.id,
-            invoice
+        await finish_payment(
+            call.bot,
+            purchase,
+            file,
+            invoice,
+            call.message
         )
 
 
     except Exception:
 
-        logger.exception("PAY ERROR")
+        logger.exception(
+            "CHECK PAYMENT ERROR"
+        )
 
-        await call.answer(
-            "❌ Error pembayaran",
+
+        await call.message.answer(
+            "❌ Terjadi error saat cek pembayaran"
+        )
+
+
+    finally:
+
+        CHECK_LOCK.discard(invoice)
+
+
+
+# ==================================================
+# MANUAL PAYMENT QR
+# ==================================================
+
+@router.callback_query(F.data.startswith("manual:"))
+async def manual_payment(call: CallbackQuery):
+
+    code = call.data.split(":")[1]
+
+
+    file = await fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE code=$1
+        """,
+        code
+    )
+
+
+    if not file:
+
+        return await call.answer(
+            "File tidak ditemukan",
             show_alert=True
         )
 
 
-    finally:
+    caption = (
+        "📷 <b>PEMBAYARAN MANUAL</b>\n\n"
+        f"📄 File : <b>{file['title']}</b>\n"
+        f"💰 Harga : <b>Rp {file['price']:,}</b>\n\n"
+        "Silahkan scan QR di atas.\n\n"
+        "⚠️ Bayar sesuai nominal.\n"
+        "Setelah bayar tekan tombol dibawah."
+    ).replace(",", ".")
 
-        try:
-            await loading.delete()
-        except:
-            pass
+
+    await call.message.answer_photo(
+        MANUAL_QR_FILE_ID,
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=manual_payment_keyboard(code)
+    )
 
 
-        await safe_delete(lock_key)
+    await call.answer()
 
-@router.callback_query(F.data.startswith("check:"))
-async def check_payment(call: CallbackQuery):
 
-    invoice = call.data.split(":")[1]
 
-    if invoice in CHECK_LOCK:
-        return await call.answer("⏳ Sedang diproses...", show_alert=True)
+# ==================================================
+# REQUEST MANUAL CHECK
+# ==================================================
 
-    CHECK_LOCK.add(invoice)
+@router.callback_query(F.data.startswith("manualcheck:"))
+async def manual_check(call: CallbackQuery):
 
-    try:
-        await call.answer("🔄 Mengecek pembayaran...")
+    code = call.data.split(":")[1]
 
-        result = await BayarGG.check_payment(invoice)
 
-        logger.info("CHECK RESULT %s", result)
+    file = await fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE code=$1
+        """,
+        code
+    )
 
-        if not result:
-            return await call.answer("❌ Gagal cek pembayaran", show_alert=True)
 
-        status = result.get("status") or result.get("payment_status")
+    if not file:
 
-        if status != "paid":
-            return await call.answer("⏳ Belum dibayar", show_alert=True)
-
-        purchase = await fetchrow(
-            "SELECT * FROM file_purchases WHERE payment_id=$1",
-            invoice
+        return await call.answer(
+            "File tidak ditemukan",
+            show_alert=True
         )
 
-        if not purchase:
-            return await call.message.answer("❌ Data pembayaran tidak ditemukan")
 
-        if purchase["status"] == "paid":
-            return await call.answer("✅ File sudah dikirim", show_alert=True)
+    text = (
+        "📥 <b>MANUAL PAYMENT CHECK</b>\n\n"
+        f"👤 User: <code>{call.from_user.id}</code>\n"
+        f"📄 File: <b>{file['title']}</b>\n"
+        f"🔑 Code: <code>{code}</code>\n"
+        f"💰 Harga: Rp {file['price']:,}"
+    ).replace(",", ".")
 
-        file = await fetchrow(
-            "SELECT * FROM files WHERE code=$1",
-            purchase["file_code"]
-        )
 
-        if not file:
-            return await call.message.answer("❌ File tidak ditemukan")
-
-        # =========================
-        # 🔥 AMBIL & FILTER MEDIA
-        # =========================
-        media_data = file["media"]
-
-        if isinstance(media_data, str):
-            media_list = json.loads(media_data)
-        else:
-            media_list = media_data
-
-        media_list = [
-            m for m in media_list
-            if isinstance(m, dict) and m.get("message_id")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Approve",
+                    callback_data=f"approve:{call.from_user.id}:{code}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Reject",
+                    callback_data=f"reject:{call.from_user.id}:{code}"
+                )
+            ]
         ]
-
-        if not media_list:
-            return await call.message.answer("❌ Media kosong")
-
-        # =========================
-        # 🔥 SAVE KE REDIS
-        # =========================
-        await safe_set(
-            f"paidmedia:{invoice}",
-            {
-                "media": media_list,
-                "share_media": file["share_media"]
-            },
-            ex=3600
-        )
-
-        # =========================
-        # 🔥 UPDATE STATUS
-        # =========================
-        await execute(
-            "UPDATE file_purchases SET status='paid' WHERE payment_id=$1",
-            invoice
-        )
-
-        # =========================
-        # 🔥 UPDATE BUY COUNT
-        # =========================
-        await execute(
-            """
-            UPDATE files
-            SET buy_count = COALESCE(buy_count, 0) + 1
-            WHERE code=$1
-            """,
-            purchase["file_code"]
-        )
-
-        # =========================
-        # 💰 BAGI HASIL SELLER 50%
-        # =========================
-
-        price = file["price"] or 0
-
-        # 50% untuk platform
-        platform_fee = int(price * 0.50)
-
-        # 50% untuk owner file
-        seller_income = price - platform_fee
+    )
 
 
-        # tambah saldo owner
-        await execute(
-            """
-            UPDATE users
-            SET 
-                balance = COALESCE(balance,0) + $1,
-                total_earn = COALESCE(total_earn,0) + $1
-            WHERE chat_id=$2
-            """,
-            seller_income,
-            file["owner_id"]
-        )
+    for admin in ADMIN_IDS:
 
-
-        # simpan riwayat pendapatan
-        await execute(
-            """
-            INSERT INTO transactions
-            (
-                user_id,
-                type,
-                amount,
-                description
-            )
-            VALUES
-            ($1,$2,$3,$4)
-            """,
-            file["owner_id"],
-            "file_sale",
-            seller_income,
-            f"Pendapatan file {purchase['file_code']}"
-        )
-
-        # =========================
-        # 🔥 DETEKSI VIP / VVIP
-        # =========================
-        code = purchase["file_code"].lower()
-
-        if "vvip" in code:
-            await send_upgrade_notif(call.bot, purchase["user_id"], "vvip")
-
-        elif "vip" in code:
-            await send_upgrade_notif(call.bot, purchase["user_id"], "vip")
-
-        # =========================
-        # 🔥 NOTIF CHANNEL
-        # =========================
         try:
-            masked_id = mask_user_id(purchase["user_id"])
-
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="🛒 Buy Now",
-                            url=f"https://t.me/mktplbot?start={purchase['file_code']}"
-                        )
-                    ]
-                ]
-            )
-
-            text = (
-                "💸 <b>FILE PAYMENT SUCCESS</b>\n\n"
-                f"📄 <b>Judul:</b> {file['title']}\n"
-                f"📁 <b>Code:</b> <code>{purchase['file_code']}</code>\n"
-                f"👤 <b>User Id:</b> <code>{masked_id}</code>"
-            )
 
             await call.bot.send_message(
-                chat_id=NOTIF_CHANNEL_ID,
-                text=text,
+                admin,
+                text,
                 parse_mode="HTML",
-                reply_markup=kb
+                reply_markup=keyboard
             )
 
         except Exception:
-            logger.exception("NOTIF CHANNEL ERROR")
 
-        # =========================
-        # 🔥 HAPUS QR
-        # =========================
-        try:
-            if purchase["qr_message_id"] and purchase["qr_chat_id"]:
-                await call.bot.delete_message(
-                    purchase["qr_chat_id"],
-                    purchase["qr_message_id"]
-                )
-        except Exception:
-            logger.exception("DELETE QR ERROR")
+            logger.exception(
+                "SEND ADMIN ERROR"
+            )
 
-        # =========================
-        # 🔥 KIRIM MENU MEDIA
-        # =========================
-        total = len(media_list)
 
-        await call.message.answer(
-            f"""
-🎉 <b>Pembayaran berhasil</b>
+    await call.message.answer(
+        "✅ Permintaan cek pembayaran dikirim ke admin."
+    )
 
-📦 Total Media:
-{total} file
 
-Silahkan pilih:
-""",
-            parse_mode="HTML",
-            reply_markup=media_keyboard(invoice, 1, total)
+    await call.answer()
+
+
+# ==================================================
+# APPROVE MANUAL PAYMENT
+# ==================================================
+
+@router.callback_query(F.data.startswith("approve:"))
+async def approve_manual(call: CallbackQuery):
+
+    _, user_id, code = call.data.split(":")
+
+    user_id = int(user_id)
+
+
+    purchase = await fetchrow(
+        """
+        SELECT *
+        FROM file_purchases
+        WHERE user_id=$1
+        AND file_code=$2
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        user_id,
+        code
+    )
+
+
+    if not purchase:
+
+        return await call.answer(
+            "❌ Pembelian tidak ditemukan",
+            show_alert=True
         )
 
-    except Exception as e:
-        logger.exception("CHECK PAYMENT ERROR %s", e)
 
-        await call.message.answer(
-            "❌ Terjadi error saat proses pembayaran"
+    if purchase["status"] == "paid":
+
+        return await call.answer(
+            "✅ Sudah dikonfirmasi",
+            show_alert=True
         )
 
-    finally:
-        CHECK_LOCK.discard(invoice)
+
+    file = await fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE code=$1
+        """,
+        code
+    )
 
 
+    if not file:
+
+        return await call.answer(
+            "❌ File tidak ditemukan",
+            show_alert=True
+        )
+
+
+    await finish_payment(
+        call.bot,
+        purchase,
+        file,
+        purchase["payment_id"],
+        call.message
+    )
+
+
+    await call.answer(
+        "✅ Pembayaran dikonfirmasi"
+    )
+
+
+    try:
+
+        await call.bot.send_message(
+            user_id,
+            (
+                "✅ <b>Pembayaran Manual Berhasil</b>\n\n"
+                "Admin sudah mengkonfirmasi pembayaran.\n"
+                "File siap dikirim."
+            ),
+            parse_mode="HTML"
+        )
+
+
+    except Exception:
+
+        pass
+
+
+
+# ==================================================
+# REJECT MANUAL PAYMENT
+# ==================================================
+
+@router.callback_query(F.data.startswith("reject:"))
+async def reject_manual(call: CallbackQuery):
+
+    _, user_id, code = call.data.split(":")
+
+
+    user_id = int(user_id)
+
+
+    try:
+
+        await call.bot.send_message(
+            user_id,
+            (
+                "❌ <b>Pembayaran Ditolak</b>\n\n"
+                f"📦 File:\n<code>{code}</code>\n\n"
+                "Silahkan lakukan pembayaran ulang."
+            ),
+            parse_mode="HTML"
+        )
+
+
+    except Exception:
+
+        pass
+
+
+
+    await call.message.edit_text(
+        "❌ Pembayaran ditolak."
+    )
+
+
+    await call.answer()
+
+
+
+# ==================================================
+# CANCEL PAYMENT
+# ==================================================
 
 @router.callback_query(F.data.startswith("cancel:"))
 async def cancel_payment(call: CallbackQuery):
 
     invoice = call.data.split(":")[1]
-
-
-    await call.answer(
-        "❌ Membatalkan..."
-    )
 
 
     payment = await fetchrow(
@@ -663,7 +1074,7 @@ async def cancel_payment(call: CallbackQuery):
     if not payment:
 
         return await call.answer(
-            "Data tidak ditemukan",
+            "❌ Data tidak ditemukan",
             show_alert=True
         )
 
@@ -671,27 +1082,22 @@ async def cancel_payment(call: CallbackQuery):
     if payment["status"] == "paid":
 
         return await call.answer(
-            "Sudah dibayar",
+            "✅ Sudah dibayar",
             show_alert=True
         )
 
 
     try:
 
-        result = await BayarGG.cancel_payment(
+        await BayarGG.cancel_payment(
             invoice
-        )
-
-        logger.info(
-            "CANCEL RESULT %s",
-            result
         )
 
 
     except Exception:
 
         logger.exception(
-            "CANCEL ERROR"
+            "CANCEL PAYMENT ERROR"
         )
 
 
@@ -706,20 +1112,17 @@ async def cancel_payment(call: CallbackQuery):
     )
 
 
-    try:
-
-        await safe_delete(
-            f"invoice:{invoice}"
-        )
-
-    except:
-        pass
-
+    await safe_delete(
+        f"paidmedia:{invoice}"
+    )
 
 
     try:
 
-        if payment["qr_message_id"]:
+        if (
+            payment["qr_message_id"]
+            and payment["qr_chat_id"]
+        ):
 
             await call.bot.delete_message(
                 payment["qr_chat_id"],
@@ -727,69 +1130,33 @@ async def cancel_payment(call: CallbackQuery):
             )
 
 
-    except:
+    except Exception:
 
         pass
 
 
 
+    await call.answer(
+        "❌ Pembayaran dibatalkan"
+    )
+
+
     await call.message.answer(
-        "❌ <b>Pembayaran dibatalkan</b>",
+        "❌ <b>Pembayaran dibatalkan.</b>",
         parse_mode="HTML"
     )
 
-@router.callback_query(F.data.startswith("mpage:"))
-async def media_page(call: CallbackQuery):
 
-    _, invoice, page = call.data.split(":")
-    page = int(page)
-
-    data = await safe_get(f"paidmedia:{invoice}")
-
-    if not data:
-        return await call.answer(
-            "Session habis",
-            show_alert=True
-        )
-
-    try:
-        if isinstance(data, str):
-            media_list = json.loads(data)
-        else:
-            media_list = data
-    except Exception as e:
-        logger.error(f"MEDIA PAGE JSON ERROR: {e}")
-        return await call.answer(
-            "❌ Data rusak",
-            show_alert=True
-        )
-
-    await call.message.edit_reply_markup(
-        reply_markup=media_keyboard(
-            invoice,
-            page,
-            len(media_list)
-        )
-    )
-
-    await call.answer()
+# ==================================================
+# SEND PAGE MEDIA
+# ==================================================
 
 @router.callback_query(F.data.startswith("sendpage:"))
-async def send_page(call: CallbackQuery):
+async def send_page_media(call: CallbackQuery):
 
-    await call.answer(
-        "📦 Mengirim halaman..."
-    )
+    _, invoice, page = call.data.split(":")
 
-    try:
-        _, invoice, page = call.data.split(":")
-        page = int(page)
-
-    except:
-        return await call.answer(
-            "❌ Data halaman rusak",
-            show_alert=True
-        )
+    page = int(page)
 
 
     data = await safe_get(
@@ -798,72 +1165,17 @@ async def send_page(call: CallbackQuery):
 
 
     if not data:
-        return await call.message.answer(
-            "❌ Session habis",
+
+        return await call.answer(
+            "❌ Data media sudah expired",
+            show_alert=True
         )
 
 
-    try:
-        if isinstance(data, str):
-            data = json.loads(data)
+    media_list = data["media"]
 
 
-        if isinstance(data, dict):
-            media_list = data.get("media", [])
-            share_media = data.get(
-                "share_media",
-                True
-            )
-
-        else:
-            media_list = data
-            share_media = True
-
-
-        protect = not share_media
-
-
-    except Exception as e:
-        logger.error(
-            f"MEDIA ERROR {e}"
-        )
-
-        return await call.message.answer(
-            "❌ Data rusak"
-        )
-
-
-    media_list = [
-        m for m in media_list
-        if isinstance(m, dict)
-        and m.get("message_id")
-    ]
-
-
-    total = len(media_list)
-
-
-    if total == 0:
-        return await call.message.answer(
-            "❌ Media kosong"
-        )
-
-
-    max_page = (
-        total + PER_PAGE - 1
-    ) // PER_PAGE
-
-
-    page = max(
-        1,
-        min(page,max_page)
-    )
-
-
-    start = (
-        page - 1
-    ) * PER_PAGE
-
+    start = (page - 1) * PER_PAGE
 
     end = start + PER_PAGE
 
@@ -871,53 +1183,170 @@ async def send_page(call: CallbackQuery):
     items = media_list[start:end]
 
 
-    status = await call.message.answer(
-        f"📦 Mengirim halaman {page}/{max_page}..."
+    await call.answer(
+        f"📤 Mengirim halaman {page}"
     )
 
 
-    sukses = 0
+    sent = 0
 
 
     for item in items:
 
         try:
 
-            msg_id = int(
-                item["message_id"]
-            )
-
-
             await call.bot.copy_message(
-                chat_id=call.message.chat.id,
+                chat_id=call.from_user.id,
                 from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id,
-                protect_content=protect
+                message_id=item["message_id"]
             )
 
 
-            sukses += 1
+            sent += 1
 
 
-            await asyncio.sleep(0.2)
-
-
-        except Exception as e:
+        except Exception:
 
             logger.exception(
-                f"COPY MEDIA ERROR {e}"
+                "SEND PAGE ERROR"
             )
 
-
-
-    await status.edit_text(
-        f"📦 Halaman {page}/{max_page}\n\n"
-        f"✅ Terkirim: {sukses}/{len(items)} media"
-    )
 
 
     await call.message.answer(
-        f"📄 Halaman {page}/{max_page}",
+        (
+            f"✅ Halaman {page} selesai\n\n"
+            f"📦 Terkirim: {sent} file"
+        )
+    )
+
+
+
+# ==================================================
+# SEND ALL MEDIA
+# ==================================================
+
+@router.callback_query(F.data.startswith("sendall:"))
+async def send_all_media(call: CallbackQuery):
+
+    invoice = call.data.split(":")[1]
+
+
+    data = await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
+
+    if not data:
+
+        return await call.answer(
+            "❌ Data media expired",
+            show_alert=True
+        )
+
+
+    media_list = data["media"]
+
+
+    await call.answer(
+        "📦 Mengirim semua file..."
+    )
+
+
+    progress = await call.message.answer(
+        f"⏳ Mengirim 0/{len(media_list)}"
+    )
+
+
+    sent = 0
+
+
+    for index, item in enumerate(
+        media_list,
+        start=1
+    ):
+
+        try:
+
+            await call.bot.copy_message(
+                chat_id=call.from_user.id,
+                from_chat_id=STORAGE_CHANNEL_ID,
+                message_id=item["message_id"]
+            )
+
+
+            sent += 1
+
+
+            if index % 5 == 0:
+
+                try:
+
+                    await progress.edit_text(
+                        f"⏳ Mengirim {index}/{len(media_list)}"
+                    )
+
+                except:
+
+                    pass
+
+
+
+        except Exception:
+
+            logger.exception(
+                "SEND ALL ERROR"
+            )
+
+
+
+    try:
+
+        await progress.edit_text(
+            (
+                "✅ Semua file selesai\n\n"
+                f"📦 Berhasil: {sent}/{len(media_list)}"
+            )
+        )
+
+
+    except:
+
+        pass
+
+
+
+# ==================================================
+# MEDIA PAGE NAVIGATION
+# ==================================================
+
+@router.callback_query(F.data.startswith("mpage:"))
+async def media_page(call: CallbackQuery):
+
+    _, invoice, page = call.data.split(":")
+
+    page = int(page)
+
+
+    data = await safe_get(
+        f"paidmedia:{invoice}"
+    )
+
+
+    if not data:
+
+        return await call.answer(
+            "❌ Session expired",
+            show_alert=True
+        )
+
+
+    total = len(
+        data["media"]
+    )
+
+
+    await call.message.edit_reply_markup(
         reply_markup=media_keyboard(
             invoice,
             page,
@@ -927,90 +1356,3 @@ async def send_page(call: CallbackQuery):
 
 
     await call.answer()
-    
-@router.callback_query(F.data.startswith("sendall:"))
-async def send_all(call: CallbackQuery):
-
-    await call.answer(
-        "📦 Mengirim semua file..."
-    )
-
-    invoice = call.data.split(":")[1]
-
-    data = await safe_get(f"paidmedia:{invoice}")
-
-    if not data:
-        return await call.message.answer(
-            "❌ Session habis"
-        )
-
-    try:
-        if isinstance(data, str):
-            data = json.loads(data)
-
-
-        if isinstance(data, dict):
-            media_list = data.get("media", [])
-            share_media = data.get("share_media", True)
-
-        else:
-            media_list = data
-            share_media = True
-
-
-        protect = not share_media
-    except Exception as e:
-        logger.error(f"SEND ALL JSON ERROR: {e}")
-        return await call.message.answer(
-            "❌ Data rusak"
-        )
-
-    media_list = [
-        m for m in media_list
-        if isinstance(m, dict) and m.get("message_id")
-    ]
-
-    if not media_list:
-        return await call.message.answer(
-            "❌ Media kosong"
-        )
-
-    status = await call.message.answer(
-        f"📦 Mengirim {len(media_list)} file..."
-    )
-
-    sukses = 0
-    gagal = 0
-
-    for i, item in enumerate(media_list, start=1):
-        try:
-            msg_id = int(item["message_id"])
-
-            await call.bot.copy_message(
-                chat_id=call.message.chat.id,
-                from_chat_id=STORAGE_CHANNEL_ID,
-                message_id=msg_id,
-                protect_content=protect
-            )
-
-            sukses += 1
-
-            if i % 10 == 0:
-                try:
-                    await status.edit_text(
-                        f"📦 Mengirim...\n{sukses}/{len(media_list)}"
-                    )
-                except Exception:
-                    pass
-
-            await asyncio.sleep(0.3)
-
-        except Exception as e:
-            gagal += 1
-            logger.exception(f"SEND ALL ERROR: {e}")
-
-    await status.edit_text(
-        f"✅ Selesai\n\n"
-        f"📦 Berhasil: {sukses}\n"
-        f"❌ Gagal: {gagal}"
-    )
