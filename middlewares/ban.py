@@ -19,7 +19,7 @@ class BanMiddleware(BaseMiddleware):
             """
             SELECT is_banned
             FROM users
-            WHERE id=$1
+            WHERE user_id=$1
             """,
             user_id
         )
