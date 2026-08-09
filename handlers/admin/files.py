@@ -68,6 +68,10 @@ async def admin_files(
         """
     ) or 0
 
+    # =========================
+    # BUTTON FILE MENU
+    # =========================
+
     kb = InlineKeyboardBuilder()
 
     kb.button(
@@ -491,11 +495,11 @@ async def file_toggle(
 
 
 # =========================
-# HAPUS FILE
+# KONFIRMASI HAPUS CODE
 # =========================
 
 @router.callback_query(F.data.startswith("file_delete:"))
-async def delete_file(
+async def delete_file_confirm(
     call: CallbackQuery
 ):
 
@@ -506,7 +510,92 @@ async def delete_file(
 
     pool = await get_pool()
 
-    await pool.execute(
+    file = await pool.fetchrow(
+        """
+        SELECT
+            id,
+            code,
+            title
+        FROM files
+        WHERE id=$1
+        """,
+        file_id
+    )
+
+    if not file:
+        return await call.answer(
+            "File tidak ditemukan.",
+            show_alert=True
+        )
+
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="✅ Ya, Hapus",
+        callback_data=f"file_delete_yes:{file_id}"
+    )
+
+    kb.button(
+        text="❌ Batal",
+        callback_data=f"file_delete_cancel:{file_id}"
+    )
+
+    kb.adjust(2)
+
+    await call.message.edit_text(
+        (
+            "⚠️ <b>KONFIRMASI HAPUS CODE</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+
+            f"🔑 Code : <code>{file['code']}</code>\n"
+            f"📄 Judul : {file['title'] or '-'}\n\n"
+
+            "⚠️ File akan dihapus dari database.\n"
+            "Tindakan ini tidak dapat dibatalkan.\n\n"
+
+            "Apakah kamu yakin ingin menghapusnya?"
+        ),
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
+    )
+
+    await call.answer()
+
+
+# =========================
+# EKSEKUSI HAPUS
+# =========================
+
+@router.callback_query(
+    F.data.startswith("file_delete_yes:")
+)
+async def delete_file_execute(
+    call: CallbackQuery
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    file_id = int(call.data.split(":")[1])
+
+    pool = await get_pool()
+
+    file = await pool.fetchrow(
+        """
+        SELECT code
+        FROM files
+        WHERE id=$1
+        """,
+        file_id
+    )
+
+    if not file:
+        return await call.answer(
+            "File sudah tidak ditemukan.",
+            show_alert=True
+        )
+
+    result = await pool.execute(
         """
         DELETE FROM files
         WHERE id=$1
@@ -515,8 +604,117 @@ async def delete_file(
     )
 
     await call.message.edit_text(
-        "🗑 File berhasil dihapus."
+        (
+            "🗑 <b>CODE BERHASIL DIHAPUS</b>\n"
+            "━━━━━━━━━━━━━━\n\n"
+            f"🔑 Code : <code>{file['code']}</code>\n\n"
+            "File telah dihapus dari database."
+        ),
+        parse_mode="HTML"
+    )
+
+    await call.answer(
+        "Code berhasil dihapus."
+    )
+
+
+# =========================
+# BATAL HAPUS
+# =========================
+
+@router.callback_query(
+    F.data.startswith("file_delete_cancel:")
+)
+async def delete_file_cancel(
+    call: CallbackQuery
+):
+
+    if not is_admin(call.from_user.id):
+        return
+
+    file_id = int(call.data.split(":")[1])
+
+    pool = await get_pool()
+
+    file = await pool.fetchrow(
+        """
+        SELECT *
+        FROM files
+        WHERE id=$1
+        """,
+        file_id
+    )
+
+    if not file:
+        return await call.answer(
+            "File tidak ditemukan.",
+            show_alert=True
+        )
+
+    status = (
+        "💰 Berbayar"
+        if file["is_paid"]
+        else "🆓 Gratis"
+    )
+
+    harga = (
+        rupiah(file["price"])
+        if file["is_paid"]
+        else "FREE"
+    )
+
+    text = (
+        "📄 <b>DETAIL FILE</b>\n"
+        "━━━━━━━━━━━━━━\n\n"
+
+        f"🔑 CODE : <code>{file['code']}</code>\n"
+        f"📄 Judul : {file['title'] or '-'}\n"
+        f"👤 Creator : {file['creator'] or '-'}\n\n"
+
+        f"🆔 Owner : <code>{file['owner_id']}</code>\n"
+        f"🛒 Seller : <code>{file['seller_id']}</code>\n\n"
+
+        f"💳 Status : {status}\n"
+        f"💰 Harga : {harga}\n\n"
+
+        f"🖼 Media : {file['media_count']}\n"
+        f"👁 View : {file['view_count']}\n"
+        f"📥 Download : {file['download_count']}\n"
+        f"❤️ Favorite : {file['favorite_count']}\n"
+        f"🛍 Buy : {file['buy_count']}\n\n"
+
+        f"📂 Category : {file['category'] or '-'}\n"
+        f"📅 Upload : {file['created_at']}"
+    )
+
+    kb = InlineKeyboardBuilder()
+
+    kb.button(
+        text="💰 Edit Harga",
+        callback_data=f"file_price:{file['id']}"
+    )
+
+    kb.button(
+        text="🔄 Gratis/Bayar",
+        callback_data=f"file_toggle:{file['id']}"
+    )
+
+    kb.button(
+        text="🗑 Hapus Code",
+        callback_data=f"file_delete:{file['id']}"
+    )
+
+    kb.button(
+        text="⬅ Files Menu",
+        callback_data="admin_files"
+    )
+
+    kb.adjust(2, 1, 1)
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=kb.as_markup()
     )
 
     await call.answer()
-
